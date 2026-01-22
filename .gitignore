@@ -1,0 +1,4 @@
+
+# Build files and directories
+fyne-cross/*
+wgAdmin/*
