@@ -184,8 +184,8 @@ func (f *TunnelForm) Show() {
 			}
 		},
 	)
-	f.peersList.Resize(fyne.NewSize(560, 150))
-
+	//f.peersList.Resize(fyne.NewSize(560, float32(f.peersList.Length()*100)))
+	// f.peersList.Resize(fyne.NewSize(560, 150))
 	addPeerBtn := widget.NewButtonWithIcon("Add Peer", theme.ContentAddIcon(), func() {
 		peerForm := NewPeerForm(nil, func(p models.Peer) {
 			f.peers = append(f.peers, p)
@@ -193,14 +193,17 @@ func (f *TunnelForm) Show() {
 		}, nil)
 		peerForm.Show(win)
 	})
+	sizedList := container.NewGridWrap(
+		fyne.NewSize(560, float32(f.peersList.Length()*50)),
+		f.peersList,
+	)
 
 	peersSection := container.NewBorder(
 		widget.NewLabel("Peers"),
 		addPeerBtn,
 		nil, nil,
-		f.peersList,
+		sizedList, // Use the sized wrapper here
 	)
-
 	// Action buttons
 	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
 		config, errs := f.validate()
