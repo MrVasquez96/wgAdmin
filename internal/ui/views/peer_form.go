@@ -14,6 +14,7 @@ import (
 
 // PeerForm handles peer configuration
 type PeerForm struct {
+	nameLabel                *widget.Label
 	publicKeyEntry           *widget.Entry
 	allowedIPsEntry          *widget.Entry
 	endpointEntry            *widget.Entry
@@ -27,6 +28,7 @@ type PeerForm struct {
 // NewPeerForm creates a new peer form
 func NewPeerForm(existing *models.Peer, onSave func(models.Peer), onCancel func()) *PeerForm {
 	f := &PeerForm{
+		nameLabel:                widget.NewLabel(existing.Name),
 		publicKeyEntry:           widget.NewEntry(),
 		allowedIPsEntry:          widget.NewEntry(),
 		endpointEntry:            widget.NewEntry(),

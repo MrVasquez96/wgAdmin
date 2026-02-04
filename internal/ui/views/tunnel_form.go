@@ -44,7 +44,7 @@ func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *mode
 	f := &TunnelForm{
 		window:          parent,
 		isEdit:          existingName != "",
-		name:            existingName,
+		name:            existingConfig.Name,
 		nameEntry:       widget.NewEntry(),
 		privateKeyEntry: widget.NewEntry(),
 		publicKeyLabel:  widget.NewLabel(""),
@@ -163,7 +163,7 @@ func (f *TunnelForm) Show() {
 			if endpoint == "" {
 				endpoint = "(no endpoint)"
 			}
-			label.SetText(fmt.Sprintf("%s... - %s", peer.PublicKey[:12], endpoint))
+			label.SetText(fmt.Sprintf("%s... - %s", peer.PublicKey[:12], peer.Name))
 
 			editBtn.OnTapped = func() {
 				peerCopy := f.peers[id]
@@ -178,6 +178,7 @@ func (f *TunnelForm) Show() {
 				dialog.ShowConfirm("Delete Peer", "Remove this peer?", func(yes bool) {
 					if yes {
 						f.peers = append(f.peers[:id], f.peers[id+1:]...)
+
 						f.peersList.Refresh()
 					}
 				}, win)

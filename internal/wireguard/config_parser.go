@@ -29,10 +29,15 @@ func parseConfigReader(scanner *bufio.Scanner) (*models.WireGuardConfig, error) 
 	config := &models.WireGuardConfig{}
 	var currentPeer *models.Peer
 	inPeerSection := false
-
+	var lastLines []string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
+		if len(lastLines) == 3 {
+			lastLines = lastLines[1:]
+
+		}
+		lastLines = append(lastLines, line)
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -40,6 +45,11 @@ func parseConfigReader(scanner *bufio.Scanner) (*models.WireGuardConfig, error) 
 
 		// Section headers
 		if line == "[Interface]" {
+			configName := "Unknown"
+			if len(lastLines) > 1 {
+				configName = lastLines[len(lastLines)-2]
+			}
+			config.Name = removeHashtag(configName)
 			inPeerSection = false
 			currentPeer = nil
 			continue
@@ -47,7 +57,17 @@ func parseConfigReader(scanner *bufio.Scanner) (*models.WireGuardConfig, error) 
 
 		if line == "[Peer]" {
 			inPeerSection = true
-			config.Peers = append(config.Peers, models.Peer{})
+
+			peer := models.Peer{}
+			if len(lastLines) > 1 {
+				peerName := lastLines[len(lastLines)-2]
+				if peerName != "" {
+					peer.Name = removeHashtag(peerName)
+				} else {
+					peer.Name = "Unknown"
+				}
+			}
+			config.Peers = append(config.Peers, peer)
 			currentPeer = &config.Peers[len(config.Peers)-1]
 			continue
 		}
@@ -93,4 +113,14 @@ func parseConfigReader(scanner *bufio.Scanner) (*models.WireGuardConfig, error) 
 	}
 
 	return config, scanner.Err()
+}
+func removeHashtag(s string) string {
+	if strings.Contains(s, "#") {
+		if s[:2] == "# " {
+			s = s[2:]
+		} else if s[:1] == "#" {
+			s = s[1:]
+		}
+	}
+	return s
 }

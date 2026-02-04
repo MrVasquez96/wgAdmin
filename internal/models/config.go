@@ -3,6 +3,7 @@ package models
 // WireGuardConfig represents a complete WireGuard configuration
 type WireGuardConfig struct {
 	// Interface section
+	Name       string
 	PrivateKey string
 	Address    string
 	DNS        string

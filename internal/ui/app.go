@@ -21,7 +21,7 @@ func NewApp() *App {
 	a.Settings().SetTheme(customTheme.NewWGAdminTheme())
 
 	w := a.NewWindow("WireGuard Manager")
-	w.Resize(fyne.NewSize(950, 700))
+	w.Resize(fyne.NewSize(950, 800))
 
 	return &App{
 		fyneApp: a,
