@@ -33,7 +33,7 @@ func (s *StatusBar) SetStatus(msg string, success bool) {
 	if success {
 		s.icon.SetResource(theme.ConfirmIcon())
 	} else {
-		s.icon.SetResource(theme.CancelIcon())
+		s.icon.SetResource(theme.ErrorIcon())
 	}
 	s.message.SetText(msg)
 	s.Refresh()
