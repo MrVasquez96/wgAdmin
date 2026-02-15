@@ -133,7 +133,7 @@ func (v *MainView) rebuild() {
 
 	filter := strings.TrimSpace(strings.ToLower(v.filterEntry.Text))
 
-	for _, iface := range v.interfaces {
+	for i, iface := range v.interfaces {
 		if filter != "" && !strings.Contains(strings.ToLower(iface.Name), filter) {
 			continue
 		}
@@ -156,7 +156,9 @@ func (v *MainView) rebuild() {
 		})
 
 		v.listContainer.Add(card)
-		v.listContainer.Add(widget.NewSeparator())
+		if i != len(v.interfaces)-1 { // Skip seperator on last card
+			v.listContainer.Add(widget.NewSeparator())
+		}
 	}
 
 	v.listContainer.Refresh()
@@ -176,7 +178,7 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 		fyne.DoAndWait(func() {
 			v.busyDialog.Hide()
 
-			if err != nil { 
+			if err != nil {
 				v.statusBar.SetStatus(fmt.Sprintf("Error: %v", err), false)
 			} else {
 				action := "deactivated"
