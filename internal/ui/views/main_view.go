@@ -119,10 +119,6 @@ func (v *MainView) Refresh() {
 
 			v.interfaces = interfaces
 			v.lastRefresh = time.Now()
-			v.statusBar.SetStatus(
-				fmt.Sprintf("Loaded %d interface(s) at %s", len(interfaces), v.lastRefresh.Format(time.Kitchen)),
-				true,
-			)
 			v.rebuild()
 		})
 	}()
