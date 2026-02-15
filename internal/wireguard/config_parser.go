@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -12,6 +13,10 @@ import (
 	"wgAdmin/internal/models"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+)
+
+const (
+	INVALID_ENDPOINT string = "invalid Endpoint"
 )
 
 // ParseConfig reads a .conf file and returns a typed Config.
@@ -220,7 +225,7 @@ func parsePeerField(peer *models.PeerConfig, key, value string) error {
 	case "Endpoint":
 		endpoint, err := net.ResolveUDPAddr("udp", value)
 		if err != nil {
-			return fmt.Errorf("invalid Endpoint %q: %w", value, err)
+			return errors.New(INVALID_ENDPOINT)
 		}
 		peer.Endpoint = endpoint
 	case "PersistentKeepalive":

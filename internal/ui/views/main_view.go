@@ -171,19 +171,28 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 	go func() {
 		err := wireguard.ToggleInterface(name, activate)
 
-		fyne.DoAndWait(func() {
+		fyne.Do(func() {
 			v.busyDialog.Hide()
 
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), wireguard.INVALID_ENDPOINT) {
 				v.statusBar.SetStatus(fmt.Sprintf("Error: %v", err), false)
 			} else {
-				action := "deactivated"
-				if activate {
-					action = "activated"
+				if err != nil {
+					if strings.Contains(err.Error(), wireguard.INVALID_ENDPOINT) {
+						v.statusBar.SetStatus(
+							fmt.Sprintf("Failed to reach endpoint for '%s' at %s", name, v.lastRefresh.Format(time.Kitchen)),
+							false,
+						)
+					}
+				} else {
+					action := "deactivated"
+					if activate {
+						action = "activated"
+					}
+					v.statusBar.SetStatus(fmt.Sprintf("%s %s successfully", name, action), true)
 				}
-				v.statusBar.SetStatus(fmt.Sprintf("%s %s successfully", name, action), true)
 			}
-
+			v.statusBar.Refresh()
 			v.Refresh()
 		})
 	}()
