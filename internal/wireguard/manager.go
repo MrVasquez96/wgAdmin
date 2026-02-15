@@ -1,17 +1,24 @@
 package wireguard
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"wgAdmin/internal/models"
 )
 
 const ConfigDir = "/etc/wireguard"
+
+// Client registry tracks running WireGuard clients by interface name.
+var (
+	clientsMu sync.Mutex
+	clients   = make(map[string]*Client)
+)
 
 // ListInterfaces returns all WireGuard interfaces from /etc/wireguard/*.conf
 func ListInterfaces() ([]models.Interface, error) {
@@ -54,31 +61,71 @@ func GetInterfaceIP(name string) string {
 			return ipNet.IP.String()
 		}
 	}
-
-	// Fallback to ip command
-	cmd := exec.Command("bash", "-c",
-		fmt.Sprintf(`ip -4 address show %s | grep -oP '(?<=inet\s)\d+(\.\d+){3}/\d+' | cut -d/ -f1 | head -n1`, shellQuote(name)))
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return ""
 }
 
 // IsInterfaceActive checks if a WireGuard interface is up
 func IsInterfaceActive(name string) bool {
-	cmd := exec.Command("ip", "link", "show", name)
-	return cmd.Run() == nil
+	clientsMu.Lock()
+	_, running := clients[name]
+	clientsMu.Unlock()
+	if running {
+		return true
+	}
+
+	// Fallback: check if the OS knows about the interface
+	_, err := net.InterfaceByName(name)
+	return err == nil
 }
 
-// ToggleInterface brings interface up or down via wg-quick
+// ToggleInterface brings interface up or down using the native WireGuard client
 func ToggleInterface(name string, up bool) error {
-	action := "down"
 	if up {
-		action = "up"
+		return startInterface(name)
 	}
-	cmd := exec.Command("wg-quick", action, name)
-	return cmd.Run()
+	return stopInterface(name)
+}
+
+func startInterface(name string) error {
+	clientsMu.Lock()
+	if _, exists := clients[name]; exists {
+		clientsMu.Unlock()
+		return fmt.Errorf("interface %s is already running", name)
+	}
+	clientsMu.Unlock()
+
+	configPath := GetConfigPath(name)
+	client, err := NewClientFromFile(configPath, WithInterfaceName(name))
+	if err != nil {
+		return fmt.Errorf("failed to create WireGuard client for %s: %w", name, err)
+	}
+
+	if err := client.Start(context.Background()); err != nil {
+		return fmt.Errorf("failed to start interface %s: %w", name, err)
+	}
+
+	clientsMu.Lock()
+	clients[name] = client
+	clientsMu.Unlock()
+
+	return nil
+}
+
+func stopInterface(name string) error {
+	clientsMu.Lock()
+	client, exists := clients[name]
+	if !exists {
+		clientsMu.Unlock()
+		return fmt.Errorf("interface %s is not running", name)
+	}
+	delete(clients, name)
+	clientsMu.Unlock()
+
+	if err := client.Stop(); err != nil {
+		return fmt.Errorf("failed to stop interface %s: %w", name, err)
+	}
+
+	return nil
 }
 
 // DeleteInterface removes the .conf file, optionally creating a backup
@@ -112,8 +159,4 @@ func GetConfigPath(name string) string {
 func ConfigExists(name string) bool {
 	_, err := os.Stat(GetConfigPath(name))
 	return err == nil
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

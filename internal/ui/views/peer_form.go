@@ -27,8 +27,12 @@ type PeerForm struct {
 
 // NewPeerForm creates a new peer form
 func NewPeerForm(existing *models.Peer, onSave func(models.Peer), onCancel func()) *PeerForm {
+	peerName := ""
+	if existing != nil {
+		peerName = existing.Name
+	}
 	f := &PeerForm{
-		nameLabel:                widget.NewLabel(existing.Name),
+		nameLabel:                widget.NewLabel(peerName),
 		publicKeyEntry:           widget.NewEntry(),
 		allowedIPsEntry:          widget.NewEntry(),
 		endpointEntry:            widget.NewEntry(),

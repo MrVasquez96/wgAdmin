@@ -37,6 +37,11 @@ func GenerateConfigString(config *models.WireGuardConfig) string {
 
 	// Peer sections
 	for _, peer := range config.Peers {
+		if peer.Name != "" {
+			sb.WriteString(fmt.Sprintf("\n# %s\n", peer.Name))
+		} else {
+			sb.WriteString("\n# Unknown Peer\n")
+		}
 		sb.WriteString("\n[Peer]\n")
 		sb.WriteString(fmt.Sprintf("PublicKey = %s\n", peer.PublicKey))
 		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n", peer.AllowedIPs))

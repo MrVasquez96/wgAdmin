@@ -41,10 +41,16 @@ type TunnelForm struct {
 
 // NewTunnelForm creates a new tunnel form
 func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *models.WireGuardConfig, onSave func(string, *models.WireGuardConfig) error, onCancel func()) *TunnelForm {
+	tunnelName := existingName
+	isEdit := existingName != ""
+	if isEdit {
+		tunnelName = existingConfig.Name
+	}
+
 	f := &TunnelForm{
 		window:          parent,
 		isEdit:          existingName != "",
-		name:            existingConfig.Name,
+		name:            tunnelName,
 		nameEntry:       widget.NewEntry(),
 		privateKeyEntry: widget.NewEntry(),
 		publicKeyLabel:  widget.NewLabel(""),
@@ -66,7 +72,12 @@ func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *mode
 
 	if existingConfig != nil {
 		f.nameEntry.SetText(existingName)
-		f.nameEntry.Disable()
+		if isEdit {
+			f.nameEntry.Disable()
+		} else {
+			f.nameEntry.Enable()
+
+		}
 		f.privateKeyEntry.SetText(existingConfig.PrivateKey)
 		f.addressEntry.SetText(existingConfig.Address)
 		f.dnsEntry.SetText(existingConfig.DNS)

@@ -88,7 +88,7 @@ func (v *MainView) Build() fyne.CanvasObject {
 	scroll.SetMinSize(fyne.NewSize(860, 480))
 
 	// Footer hint
-	hint := widget.NewRichTextFromMarkdown("Configs: `/etc/wireguard` | Uses `wg-quick` | Requires root privileges")
+	hint := widget.NewRichTextFromMarkdown("Configs: `/etc/wireguard` | Native WireGuard | Requires root privileges")
 	hint.Wrapping = fyne.TextWrapWord
 
 	// Main content
@@ -176,7 +176,7 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 		fyne.DoAndWait(func() {
 			v.busyDialog.Hide()
 
-			if err != nil {
+			if err != nil { 
 				v.statusBar.SetStatus(fmt.Sprintf("Error: %v", err), false)
 			} else {
 				action := "deactivated"

@@ -1,52 +1,43 @@
 package wireguard
 
 import (
-	"os/exec"
-	"strings"
+	"fmt"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // GeneratePrivateKey generates a new WireGuard private key
 func GeneratePrivateKey() (string, error) {
-	cmd := exec.Command("wg", "genkey")
-	out, err := cmd.Output()
+	key, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate private key: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return key.String(), nil
 }
 
 // DerivePublicKey derives public key from private key
 func DerivePublicKey(privateKey string) (string, error) {
-	cmd := exec.Command("wg", "pubkey")
-	cmd.Stdin = strings.NewReader(privateKey)
-	out, err := cmd.Output()
+	key, err := wgtypes.ParseKey(privateKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid private key: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return key.PublicKey().String(), nil
 }
 
 // GenerateKeyPair generates a new private/public key pair
 func GenerateKeyPair() (privateKey, publicKey string, err error) {
-	privateKey, err = GeneratePrivateKey()
+	privKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to generate private key: %w", err)
 	}
-
-	publicKey, err = DerivePublicKey(privateKey)
-	if err != nil {
-		return "", "", err
-	}
-
-	return privateKey, publicKey, nil
+	return privKey.String(), privKey.PublicKey().String(), nil
 }
 
 // GeneratePresharedKey generates a preshared key for additional security
 func GeneratePresharedKey() (string, error) {
-	cmd := exec.Command("wg", "genpsk")
-	out, err := cmd.Output()
+	key, err := wgtypes.GenerateKey()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate preshared key: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return key.String(), nil
 }
