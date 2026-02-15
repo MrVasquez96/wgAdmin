@@ -192,7 +192,7 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 }
 
 func (v *MainView) showAddTunnelForm() {
-	form := NewTunnelForm(v.window, "", nil, func(name string, config *models.WireGuardConfig) error {
+	form := NewTunnelForm(v.window, "", nil, func(name string, config *models.Config) error {
 		err := wireguard.WriteConfig(name, config)
 		if err == nil {
 			v.Refresh()
@@ -226,8 +226,8 @@ func (v *MainView) showEditTunnelForm(name string) {
 	v.openEditForm(name, config)
 }
 
-func (v *MainView) openEditForm(name string, config *models.WireGuardConfig) {
-	form := NewTunnelForm(v.window, name, config, func(_ string, newConfig *models.WireGuardConfig) error {
+func (v *MainView) openEditForm(name string, config *models.Config) {
+	form := NewTunnelForm(v.window, name, config, func(_ string, newConfig *models.Config) error {
 		err := wireguard.WriteConfig(name, newConfig)
 		if err == nil {
 			v.Refresh()

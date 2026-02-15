@@ -2,7 +2,9 @@ package views
 
 import (
 	"fmt"
+	"net"
 	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -13,6 +15,8 @@ import (
 
 	"wgAdmin/internal/models"
 	"wgAdmin/internal/wireguard"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // TunnelForm handles tunnel creation and editing
@@ -31,16 +35,16 @@ type TunnelForm struct {
 	mtuEntry        *widget.Entry
 
 	// Peers
-	peers     []models.Peer
+	peers     []models.PeerConfig
 	peersList *widget.List
 
 	// Callbacks
-	onSave   func(name string, config *models.WireGuardConfig) error
+	onSave   func(name string, config *models.Config) error
 	onCancel func()
 }
 
 // NewTunnelForm creates a new tunnel form
-func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *models.WireGuardConfig, onSave func(string, *models.WireGuardConfig) error, onCancel func()) *TunnelForm {
+func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *models.Config, onSave func(string, *models.Config) error, onCancel func()) *TunnelForm {
 	tunnelName := existingName
 	isEdit := existingName != ""
 	if isEdit {
@@ -58,7 +62,7 @@ func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *mode
 		dnsEntry:        widget.NewEntry(),
 		listenPortEntry: widget.NewEntry(),
 		mtuEntry:        widget.NewEntry(),
-		peers:           []models.Peer{},
+		peers:           []models.PeerConfig{},
 		onSave:          onSave,
 		onCancel:        onCancel,
 	}
@@ -78,14 +82,27 @@ func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *mode
 			f.nameEntry.Enable()
 
 		}
-		f.privateKeyEntry.SetText(existingConfig.PrivateKey)
-		f.addressEntry.SetText(existingConfig.Address)
-		f.dnsEntry.SetText(existingConfig.DNS)
-		if existingConfig.ListenPort > 0 {
-			f.listenPortEntry.SetText(strconv.Itoa(existingConfig.ListenPort))
+		f.privateKeyEntry.SetText(existingConfig.Interface.PrivateKey.String())
+
+		// Convert addresses to string
+		addrs := make([]string, len(existingConfig.Interface.Address))
+		for i, addr := range existingConfig.Interface.Address {
+			addrs[i] = addr.String()
 		}
-		if existingConfig.MTU > 0 {
-			f.mtuEntry.SetText(strconv.Itoa(existingConfig.MTU))
+		f.addressEntry.SetText(strings.Join(addrs, ", "))
+
+		// Convert DNS to string
+		dnsAddrs := make([]string, len(existingConfig.Interface.DNS))
+		for i, dns := range existingConfig.Interface.DNS {
+			dnsAddrs[i] = dns.String()
+		}
+		f.dnsEntry.SetText(strings.Join(dnsAddrs, ", "))
+
+		if existingConfig.Interface.ListenPort != nil {
+			f.listenPortEntry.SetText(strconv.Itoa(*existingConfig.Interface.ListenPort))
+		}
+		if existingConfig.Interface.MTU > 0 && existingConfig.Interface.MTU != 1420 {
+			f.mtuEntry.SetText(strconv.Itoa(existingConfig.Interface.MTU))
 		}
 		f.peers = existingConfig.Peers
 		f.updatePublicKey()
@@ -170,15 +187,16 @@ func (f *TunnelForm) Show() {
 			deleteBtn := c.Objects[3].(*widget.Button)
 
 			peer := f.peers[id]
-			endpoint := peer.Endpoint
-			if endpoint == "" {
-				endpoint = "(no endpoint)"
+			pubKeyStr := peer.PublicKey.String()
+			displayKey := pubKeyStr
+			if len(displayKey) > 12 {
+				displayKey = displayKey[:12]
 			}
-			label.SetText(fmt.Sprintf("%s... - %s", peer.PublicKey[:12], peer.Name))
+			label.SetText(fmt.Sprintf("%s... - %s", displayKey, peer.Name))
 
 			editBtn.OnTapped = func() {
 				peerCopy := f.peers[id]
-				peerForm := NewPeerForm(&peerCopy, func(p models.Peer) {
+				peerForm := NewPeerForm(&peerCopy, func(p models.PeerConfig) {
 					f.peers[id] = p
 					f.peersList.Refresh()
 				}, nil)
@@ -196,10 +214,8 @@ func (f *TunnelForm) Show() {
 			}
 		},
 	)
-	//f.peersList.Resize(fyne.NewSize(560, float32(f.peersList.Length()*100)))
-	// f.peersList.Resize(fyne.NewSize(560, 150))
 	addPeerBtn := widget.NewButtonWithIcon("Add Peer", theme.ContentAddIcon(), func() {
-		peerForm := NewPeerForm(nil, func(p models.Peer) {
+		peerForm := NewPeerForm(nil, func(p models.PeerConfig) {
 			f.peers = append(f.peers, p)
 			f.peersList.Refresh()
 		}, nil)
@@ -262,28 +278,85 @@ func (f *TunnelForm) Show() {
 	win.Show()
 }
 
-func (f *TunnelForm) validate() (*models.WireGuardConfig, []error) {
-	config := &models.WireGuardConfig{
-		PrivateKey: f.privateKeyEntry.Text,
-		Address:    f.addressEntry.Text,
-		DNS:        f.dnsEntry.Text,
-		Peers:      f.peers,
+func (f *TunnelForm) validate() (*models.Config, []error) {
+	config := &models.Config{
+		Interface: models.InterfaceConfig{
+			MTU:   1420,
+			Table: "auto",
+		},
+		Peers: f.peers,
 	}
 
+	// Parse PrivateKey
+	if f.privateKeyEntry.Text == "" {
+		return nil, []error{wireguard.ValidationError{Field: "PrivateKey", Message: "required"}}
+	}
+	if !wireguard.ValidateKey(f.privateKeyEntry.Text) {
+		return nil, []error{wireguard.ValidationError{Field: "PrivateKey", Message: "invalid format"}}
+	}
+	privKey, err := wgtypes.ParseKey(f.privateKeyEntry.Text)
+	if err != nil {
+		return nil, []error{wireguard.ValidationError{Field: "PrivateKey", Message: "invalid key"}}
+	}
+	config.Interface.PrivateKey = privKey
+
+	// Parse Address
+	if f.addressEntry.Text == "" {
+		return nil, []error{wireguard.ValidationError{Field: "Address", Message: "required"}}
+	}
+	for _, addr := range strings.Split(f.addressEntry.Text, ",") {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			continue
+		}
+		if !strings.Contains(addr, "/") {
+			if strings.Contains(addr, ":") {
+				addr += "/128"
+			} else {
+				addr += "/32"
+			}
+		}
+		_, ipNet, err := net.ParseCIDR(addr)
+		if err != nil {
+			return nil, []error{wireguard.ValidationError{Field: "Address", Message: "invalid CIDR format"}}
+		}
+		config.Interface.Address = append(config.Interface.Address, *ipNet)
+	}
+
+	// Parse DNS
+	if f.dnsEntry.Text != "" {
+		for _, dns := range strings.Split(f.dnsEntry.Text, ",") {
+			dns = strings.TrimSpace(dns)
+			if dns == "" {
+				continue
+			}
+			ip := net.ParseIP(dns)
+			if ip == nil {
+				return nil, []error{wireguard.ValidationError{Field: "DNS", Message: fmt.Sprintf("invalid DNS address: %s", dns)}}
+			}
+			config.Interface.DNS = append(config.Interface.DNS, ip)
+		}
+	}
+
+	// Parse ListenPort
 	if f.listenPortEntry.Text != "" {
 		port, err := strconv.Atoi(f.listenPortEntry.Text)
 		if err != nil {
 			return nil, []error{wireguard.ValidationError{Field: "ListenPort", Message: "must be a number"}}
 		}
-		config.ListenPort = port
+		if port < 0 || port > 65535 {
+			return nil, []error{wireguard.ValidationError{Field: "ListenPort", Message: "must be 0-65535"}}
+		}
+		config.Interface.ListenPort = &port
 	}
 
+	// Parse MTU
 	if f.mtuEntry.Text != "" {
 		mtu, err := strconv.Atoi(f.mtuEntry.Text)
 		if err != nil {
 			return nil, []error{wireguard.ValidationError{Field: "MTU", Message: "must be a number"}}
 		}
-		config.MTU = mtu
+		config.Interface.MTU = mtu
 	}
 
 	// Validate name for new tunnels

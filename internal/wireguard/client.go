@@ -84,7 +84,7 @@ func NewClient(config *models.Config, opts ...ClientOption) (*Client, error) {
 
 // NewClientFromFile creates a new WireGuard client from a configuration file.
 func NewClientFromFile(configPath string, opts ...ClientOption) (*Client, error) {
-	config, err := parseClientConfig(configPath)
+	config, err := ParseConfig(configPath)
 	if err != nil {
 		return nil, err
 	}

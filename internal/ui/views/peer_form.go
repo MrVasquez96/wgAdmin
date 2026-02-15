@@ -1,7 +1,11 @@
 package views
 
 import (
+	"fmt"
+	"net"
 	"strconv"
+	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -10,6 +14,8 @@ import (
 
 	"wgAdmin/internal/models"
 	"wgAdmin/internal/wireguard"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // PeerForm handles peer configuration
@@ -21,12 +27,12 @@ type PeerForm struct {
 	persistentKeepaliveEntry *widget.Entry
 	presharedKeyEntry        *widget.Entry
 
-	onSave   func(peer models.Peer)
+	onSave   func(peer models.PeerConfig)
 	onCancel func()
 }
 
 // NewPeerForm creates a new peer form
-func NewPeerForm(existing *models.Peer, onSave func(models.Peer), onCancel func()) *PeerForm {
+func NewPeerForm(existing *models.PeerConfig, onSave func(models.PeerConfig), onCancel func()) *PeerForm {
 	peerName := ""
 	if existing != nil {
 		peerName = existing.Name
@@ -49,13 +55,24 @@ func NewPeerForm(existing *models.Peer, onSave func(models.Peer), onCancel func(
 	f.presharedKeyEntry.SetPlaceHolder("Base64 encoded key (optional)")
 
 	if existing != nil {
-		f.publicKeyEntry.SetText(existing.PublicKey)
-		f.allowedIPsEntry.SetText(existing.AllowedIPs)
-		f.endpointEntry.SetText(existing.Endpoint)
-		if existing.PersistentKeepalive > 0 {
-			f.persistentKeepaliveEntry.SetText(strconv.Itoa(existing.PersistentKeepalive))
+		f.publicKeyEntry.SetText(existing.PublicKey.String())
+
+		// Convert AllowedIPs to string
+		ips := make([]string, len(existing.AllowedIPs))
+		for i, ip := range existing.AllowedIPs {
+			ips[i] = ip.String()
 		}
-		f.presharedKeyEntry.SetText(existing.PresharedKey)
+		f.allowedIPsEntry.SetText(strings.Join(ips, ", "))
+
+		if existing.Endpoint != nil {
+			f.endpointEntry.SetText(existing.Endpoint.String())
+		}
+		if existing.PersistentKeepalive > 0 {
+			f.persistentKeepaliveEntry.SetText(strconv.Itoa(int(existing.PersistentKeepalive.Seconds())))
+		}
+		if existing.PresharedKey != nil {
+			f.presharedKeyEntry.SetText(existing.PresharedKey.String())
+		}
 	}
 
 	return f
@@ -103,39 +120,73 @@ func (f *PeerForm) Show(parent fyne.Window) {
 	d.Show()
 }
 
-func (f *PeerForm) validate() (models.Peer, []error) {
-	peer := models.Peer{
-		PublicKey:    f.publicKeyEntry.Text,
-		AllowedIPs:   f.allowedIPsEntry.Text,
-		Endpoint:     f.endpointEntry.Text,
-		PresharedKey: f.presharedKeyEntry.Text,
+func (f *PeerForm) validate() (models.PeerConfig, []error) {
+	peer := models.PeerConfig{}
+
+	// Parse PublicKey
+	if f.publicKeyEntry.Text == "" {
+		return peer, []error{wireguard.ValidationError{Field: "Peer[0].PublicKey", Message: "required"}}
+	}
+	if !wireguard.ValidateKey(f.publicKeyEntry.Text) {
+		return peer, []error{wireguard.ValidationError{Field: "Peer[0].PublicKey", Message: "invalid format"}}
+	}
+	pubKey, err := wgtypes.ParseKey(f.publicKeyEntry.Text)
+	if err != nil {
+		return peer, []error{wireguard.ValidationError{Field: "Peer[0].PublicKey", Message: "invalid key"}}
+	}
+	peer.PublicKey = pubKey
+
+	// Parse AllowedIPs
+	if f.allowedIPsEntry.Text == "" {
+		return peer, []error{wireguard.ValidationError{Field: "Peer[0].AllowedIPs", Message: "required"}}
+	}
+	for _, cidr := range strings.Split(f.allowedIPsEntry.Text, ",") {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return peer, []error{wireguard.ValidationError{Field: "Peer[0].AllowedIPs", Message: fmt.Sprintf("invalid CIDR: %s", cidr)}}
+		}
+		peer.AllowedIPs = append(peer.AllowedIPs, *ipNet)
 	}
 
+	// Parse Endpoint
+	if f.endpointEntry.Text != "" {
+		if !wireguard.ValidateEndpoint(f.endpointEntry.Text) {
+			return peer, []error{wireguard.ValidationError{Field: "Peer[0].Endpoint", Message: "invalid format (host:port)"}}
+		}
+		endpoint, err := net.ResolveUDPAddr("udp", f.endpointEntry.Text)
+		if err != nil {
+			return peer, []error{wireguard.ValidationError{Field: "Peer[0].Endpoint", Message: "cannot resolve endpoint"}}
+		}
+		peer.Endpoint = endpoint
+	}
+
+	// Parse PersistentKeepalive
 	if f.persistentKeepaliveEntry.Text != "" {
 		keepalive, err := strconv.Atoi(f.persistentKeepaliveEntry.Text)
 		if err != nil {
-			return peer, []error{wireguard.ValidationError{Field: "PersistentKeepalive", Message: "must be a number"}}
+			return peer, []error{wireguard.ValidationError{Field: "Peer[0].PersistentKeepalive", Message: "must be a number"}}
 		}
-		peer.PersistentKeepalive = keepalive
-	}
-
-	// Create a temp config to use the validator
-	tempConfig := &models.WireGuardConfig{
-		PrivateKey: "dGVzdGtleWZvcnZhbGlkYXRpb24wMTIzNDU2Nzg5MA==", // dummy valid key
-		Address:    "10.0.0.1/32",
-		Peers:      []models.Peer{peer},
-	}
-
-	errs := wireguard.ValidateConfig(tempConfig)
-	// Filter to only peer errors
-	var peerErrs []error
-	for _, e := range errs {
-		if ve, ok := e.(wireguard.ValidationError); ok {
-			if len(ve.Field) > 4 && ve.Field[:4] == "Peer" {
-				peerErrs = append(peerErrs, e)
-			}
+		if keepalive < 0 || keepalive > 65535 {
+			return peer, []error{wireguard.ValidationError{Field: "Peer[0].PersistentKeepalive", Message: "must be 0-65535"}}
 		}
+		peer.PersistentKeepalive = time.Duration(keepalive) * time.Second
 	}
 
-	return peer, peerErrs
+	// Parse PresharedKey
+	if f.presharedKeyEntry.Text != "" {
+		if !wireguard.ValidateKey(f.presharedKeyEntry.Text) {
+			return peer, []error{wireguard.ValidationError{Field: "Peer[0].PresharedKey", Message: "invalid format"}}
+		}
+		psk, err := wgtypes.ParseKey(f.presharedKeyEntry.Text)
+		if err != nil {
+			return peer, []error{wireguard.ValidationError{Field: "Peer[0].PresharedKey", Message: "invalid key"}}
+		}
+		peer.PresharedKey = &psk
+	}
+
+	return peer, nil
 }

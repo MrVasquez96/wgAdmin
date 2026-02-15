@@ -12,7 +12,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func TestparseClientConfig(t *testing.T) {
+func TestParseConfig(t *testing.T) {
 	// Create a temporary config file
 	content := `[Interface]
 PrivateKey = WG8jSCtXPbZ2nhL1+YBQRWE9jM3d/zj/BZu6xwEQqWs=
@@ -37,9 +37,9 @@ PersistentKeepalive = 25
 	}
 
 	// Parse the config
-	config, err := parseClientConfig(configPath)
+	config, err := ParseConfig(configPath)
 	if err != nil {
-		t.Fatalf("parseClientConfig failed: %v", err)
+		t.Fatalf("ParseConfig failed: %v", err)
 	}
 
 	// Verify Interface section
@@ -95,7 +95,7 @@ PersistentKeepalive = 25
 	}
 }
 
-func TestparseClientConfigMinimal(t *testing.T) {
+func TestParseConfigMinimal(t *testing.T) {
 	content := `[Interface]
 PrivateKey = WG8jSCtXPbZ2nhL1+YBQRWE9jM3d/zj/BZu6xwEQqWs=
 Address = 10.0.0.2/24
@@ -111,9 +111,9 @@ AllowedIPs = 10.0.0.0/24
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
-	config, err := parseClientConfig(configPath)
+	config, err := ParseConfig(configPath)
 	if err != nil {
-		t.Fatalf("parseClientConfig failed: %v", err)
+		t.Fatalf("ParseConfig failed: %v", err)
 	}
 
 	// Check defaults
@@ -126,7 +126,7 @@ AllowedIPs = 10.0.0.0/24
 	}
 }
 
-func TestparseClientConfigMultiplePeers(t *testing.T) {
+func TestParseConfigMultiplePeers(t *testing.T) {
 	content := `[Interface]
 PrivateKey = WG8jSCtXPbZ2nhL1+YBQRWE9jM3d/zj/BZu6xwEQqWs=
 Address = 10.0.0.2/24
@@ -148,9 +148,9 @@ Endpoint = 203.0.113.2:51820
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
-	config, err := parseClientConfig(configPath)
+	config, err := ParseConfig(configPath)
 	if err != nil {
-		t.Fatalf("parseClientConfig failed: %v", err)
+		t.Fatalf("ParseConfig failed: %v", err)
 	}
 
 	if len(config.Peers) != 2 {
@@ -158,7 +158,7 @@ Endpoint = 203.0.113.2:51820
 	}
 }
 
-func TestparseClientConfigMissingPrivateKey(t *testing.T) {
+func TestParseConfigMissingPrivateKey(t *testing.T) {
 	content := `[Interface]
 Address = 10.0.0.2/24
 
@@ -173,13 +173,13 @@ AllowedIPs = 10.0.0.0/24
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
-	_, err := parseClientConfig(configPath)
+	_, err := ParseConfig(configPath)
 	if err == nil {
 		t.Error("Expected error for missing PrivateKey")
 	}
 }
 
-func TestparseClientConfigNoPeers(t *testing.T) {
+func TestParseConfigNoPeers(t *testing.T) {
 	content := `[Interface]
 PrivateKey = WG8jSCtXPbZ2nhL1+YBQRWE9jM3d/zj/BZu6xwEQqWs=
 Address = 10.0.0.2/24
@@ -191,13 +191,13 @@ Address = 10.0.0.2/24
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
-	_, err := parseClientConfig(configPath)
+	_, err := ParseConfig(configPath)
 	if err == nil {
 		t.Error("Expected error for no peers")
 	}
 }
 
-func TestparseClientConfigInvalidKey(t *testing.T) {
+func TestParseConfigInvalidKey(t *testing.T) {
 	content := `[Interface]
 PrivateKey = invalid-key
 Address = 10.0.0.2/24
@@ -213,7 +213,7 @@ AllowedIPs = 10.0.0.0/24
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
-	_, err := parseClientConfig(configPath)
+	_, err := ParseConfig(configPath)
 	if err == nil {
 		t.Error("Expected error for invalid key")
 	}
@@ -248,9 +248,9 @@ AllowedIPs = ` + tt.allowedIPs
 				t.Fatalf("Failed to write test config: %v", err)
 			}
 
-			config, err := parseClientConfig(configPath)
+			config, err := ParseConfig(configPath)
 			if err != nil {
-				t.Fatalf("parseClientConfig failed: %v", err)
+				t.Fatalf("ParseConfig failed: %v", err)
 			}
 
 			if config.HasDefaultRoute() != tt.expected {

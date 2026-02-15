@@ -8,9 +8,11 @@ import (
 	"strings"
 
 	"wgAdmin/internal/models"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// ValidationError represents a validation error
+// ValidationError represents a validation error.
 type ValidationError struct {
 	Field   string
 	Message string
@@ -20,28 +22,28 @@ func (e ValidationError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Field, e.Message)
 }
 
-// ValidateConfig checks a config for common errors
-func ValidateConfig(config *models.WireGuardConfig) []error {
+// ValidateConfig checks a typed config for common errors.
+func ValidateConfig(config *models.Config) []error {
 	var errs []error
 
 	// Validate Interface section
-	if config.PrivateKey == "" {
+	var zeroKey wgtypes.Key
+	if config.Interface.PrivateKey == zeroKey {
 		errs = append(errs, ValidationError{Field: "PrivateKey", Message: "required"})
-	} else if !ValidateKey(config.PrivateKey) {
-		errs = append(errs, ValidationError{Field: "PrivateKey", Message: "invalid format"})
 	}
 
-	if config.Address == "" {
+	if len(config.Interface.Address) == 0 {
 		errs = append(errs, ValidationError{Field: "Address", Message: "required"})
-	} else if !ValidateAddress(config.Address) {
-		errs = append(errs, ValidationError{Field: "Address", Message: "invalid CIDR format"})
 	}
 
-	if config.ListenPort < 0 || config.ListenPort > 65535 {
-		errs = append(errs, ValidationError{Field: "ListenPort", Message: "must be 0-65535"})
+	if config.Interface.ListenPort != nil {
+		port := *config.Interface.ListenPort
+		if port < 0 || port > 65535 {
+			errs = append(errs, ValidationError{Field: "ListenPort", Message: "must be 0-65535"})
+		}
 	}
 
-	if config.MTU < 0 || config.MTU > 65535 {
+	if config.Interface.MTU < 0 || config.Interface.MTU > 65535 {
 		errs = append(errs, ValidationError{Field: "MTU", Message: "must be 0-65535"})
 	}
 
@@ -49,35 +51,25 @@ func ValidateConfig(config *models.WireGuardConfig) []error {
 	for i, peer := range config.Peers {
 		prefix := fmt.Sprintf("Peer[%d]", i)
 
-		if peer.PublicKey == "" {
+		if peer.PublicKey == zeroKey {
 			errs = append(errs, ValidationError{Field: prefix + ".PublicKey", Message: "required"})
-		} else if !ValidateKey(peer.PublicKey) {
-			errs = append(errs, ValidationError{Field: prefix + ".PublicKey", Message: "invalid format"})
 		}
 
-		if peer.AllowedIPs == "" {
+		if len(peer.AllowedIPs) == 0 {
 			errs = append(errs, ValidationError{Field: prefix + ".AllowedIPs", Message: "required"})
-		} else if !ValidateAllowedIPs(peer.AllowedIPs) {
-			errs = append(errs, ValidationError{Field: prefix + ".AllowedIPs", Message: "invalid CIDR format"})
 		}
 
-		if peer.Endpoint != "" && !ValidateEndpoint(peer.Endpoint) {
-			errs = append(errs, ValidationError{Field: prefix + ".Endpoint", Message: "invalid format (host:port)"})
-		}
-
-		if peer.PersistentKeepalive < 0 || peer.PersistentKeepalive > 65535 {
-			errs = append(errs, ValidationError{Field: prefix + ".PersistentKeepalive", Message: "must be 0-65535"})
-		}
-
-		if peer.PresharedKey != "" && !ValidateKey(peer.PresharedKey) {
-			errs = append(errs, ValidationError{Field: prefix + ".PresharedKey", Message: "invalid format"})
+		if peer.PersistentKeepalive < 0 {
+			errs = append(errs, ValidationError{Field: prefix + ".PersistentKeepalive", Message: "must be non-negative"})
 		}
 	}
 
 	return errs
 }
 
-// ValidateKey checks if a key is valid base64 and correct length (32 bytes = 44 chars base64)
+// String-based validators for UI input validation before parsing.
+
+// ValidateKey checks if a key is valid base64 and correct length (32 bytes = 44 chars base64).
 func ValidateKey(key string) bool {
 	if len(key) != 44 {
 		return false
@@ -89,13 +81,13 @@ func ValidateKey(key string) bool {
 	return len(decoded) == 32
 }
 
-// ValidateAddress checks CIDR notation (e.g., 10.0.0.1/24)
+// ValidateAddress checks CIDR notation (e.g., 10.0.0.1/24).
 func ValidateAddress(addr string) bool {
 	_, _, err := net.ParseCIDR(addr)
 	return err == nil
 }
 
-// ValidateAllowedIPs checks comma-separated CIDRs
+// ValidateAllowedIPs checks comma-separated CIDRs.
 func ValidateAllowedIPs(ips string) bool {
 	parts := strings.Split(ips, ",")
 	for _, part := range parts {
@@ -110,14 +102,12 @@ func ValidateAllowedIPs(ips string) bool {
 	return true
 }
 
-// ValidateEndpoint checks host:port format
+// ValidateEndpoint checks host:port format.
 func ValidateEndpoint(endpoint string) bool {
-	// Can be hostname:port or ip:port
 	pattern := regexp.MustCompile(`^[a-zA-Z0-9.-]+:\d{1,5}$`)
 	if !pattern.MatchString(endpoint) {
 		return false
 	}
-	// Check port range
 	parts := strings.Split(endpoint, ":")
 	if len(parts) != 2 {
 		return false
@@ -127,12 +117,11 @@ func ValidateEndpoint(endpoint string) bool {
 	return port > 0 && port <= 65535
 }
 
-// ValidateName checks if a tunnel name is valid
+// ValidateName checks if a tunnel name is valid.
 func ValidateName(name string) bool {
 	if name == "" || len(name) > 15 {
 		return false
 	}
-	// Only alphanumeric and underscore/hyphen
 	pattern := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 	return pattern.MatchString(name)
 }
