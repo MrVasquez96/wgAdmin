@@ -391,8 +391,11 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 
 		// Rename existing client config to allow overwrite
 		clientPath := filepath.Join(clientDir, peer.Name+".conf")
-		os.Rename(clientPath, clientPath+".bkp")
-		_, err := clientCtrl.NewClientConfig(*serverCfg, peerOpts, privKey, true)
+		_, err := os.Stat(clientPath)
+		if os.IsExist(err) {
+			os.Rename(clientPath, clientPath+".bkp")
+		}
+		_, err = clientCtrl.NewClientConfig(*serverCfg, peerOpts, privKey, true)
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("client config for '%s': %w", peer.Name, err), win)
 			continue
