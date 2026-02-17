@@ -187,32 +187,93 @@ func (f *TunnelForm) Show() {
 		}
 	})
 
-	interfaceForm := container.NewVBox(
-		widget.NewLabel("Tunnel Name *"),
-		f.nameEntry,
-		widget.NewSeparator(),
-		widget.NewLabel("Private Key *"),
-		container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry),
-		widget.NewLabel("Public Key (derived):"),
-		container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyLabel),
-		widget.NewSeparator(),
-		widget.NewLabel("Address (CIDR) *"),
-		f.addressEntry,
-		widget.NewLabel("DNS"),
-		f.dnsEntry,
-		widget.NewLabel("Listen Port"),
-		f.listenPortEntry,
-		widget.NewLabel("Public Endpoint (for client configs)"),
-		f.publicEndpointEntry,
-		widget.NewLabel("MTU"),
-		f.mtuEntry,
-		widget.NewSeparator(),
-		widget.NewLabel("PostUp"),
-		container.NewGridWrap(fyne.NewSize(560, 60), f.postUpEntry),
-		widget.NewLabel("PostDown"),
-		container.NewGridWrap(fyne.NewSize(560, 60), f.postDownEntry),
+	// 1. Prepare Composite Widgets (Input + Button on same line)
+	// We use Border layout: Button on Right, Entry in Center
+	privKeyRow := container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry)
+	pubKeyRow := container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyLabel)
+
+	// 2. Configure Multi-line entries for Scripts
+	// Instead of GridWrap, we simply tell the entry to support multiline
+	// and set a minimum visible height.
+	f.postUpEntry.MultiLine = true
+	f.postUpEntry.SetMinRowsVisible(3)
+	f.postDownEntry.MultiLine = true
+	f.postDownEntry.SetMinRowsVisible(3)
+
+	// 3. Create the Form
+	// widget.Form handles the alignment of labels perfectly.
+	interfaceForm := widget.NewForm(
+		widget.NewFormItem("Tunnel Name", f.nameEntry),
+		// A separator isn't a form item, so we can group these logicially later,
+		// or just keep it one big form. Here is one clean list:
+
+		widget.NewFormItem("Private Key", privKeyRow),
+		widget.NewFormItem("Public Key", pubKeyRow),
+
+		// Network Config
+		widget.NewFormItem("Address (CIDR)", f.addressEntry),
+		widget.NewFormItem("DNS", f.dnsEntry),
+		widget.NewFormItem("Listen Port", f.listenPortEntry),
+		widget.NewFormItem("Endpoint", f.publicEndpointEntry),
+		widget.NewFormItem("MTU", f.mtuEntry),
+
+		// Scripts
+		widget.NewFormItem("PostUp", f.postUpEntry),
+		widget.NewFormItem("PostDown", f.postDownEntry),
 	)
 
+	// Action buttons
+	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+		cfg, errs := f.validate()
+		if len(errs) > 0 {
+			dialog.ShowError(errs[0], win)
+			return
+		}
+
+		name := f.getTunnelName()
+		if err := f.onSave(name, cfg); err != nil {
+			fmt.Println("error saving", err)
+			dialog.ShowError(err, win)
+			return
+		}
+		// Generate client configs for peers with private keys
+		f.generateClientConfigs(name, cfg, win)
+
+		win.Close()
+	})
+	saveBtn.Importance = widget.HighImportance
+
+	cancelBtn := widget.NewButton("Cancel", func() {
+		if f.onCancel != nil {
+			f.onCancel()
+		}
+		win.Close()
+	})
+
+	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
+
+	// Main layout
+	content := container.NewBorder(
+		nil,
+		buttons,
+		nil, nil,
+		container.NewVScroll(container.NewVBox(
+			widget.NewCard("Interface Configuration", "", interfaceForm),
+		)),
+	)
+
+	win.SetContent(container.NewPadded(content))
+	win.Show()
+}
+func (f *TunnelForm) ShowPeers() {
+
+	title := "Peers / Clients"
+	if f.isEdit {
+		title = "Edit Peer: " + f.name
+	}
+
+	win := fyne.CurrentApp().NewWindow(title)
+	win.Resize(fyne.NewSize(600, 700))
 	// Peers section
 	f.peersList = widget.NewList(
 		func() int { return len(f.peers) },
@@ -325,7 +386,6 @@ func (f *TunnelForm) Show() {
 		buttons,
 		nil, nil,
 		container.NewVScroll(container.NewVBox(
-			widget.NewCard("Interface Configuration", "", interfaceForm),
 			widget.NewCard("Peers", "", peersSection),
 		)),
 	)

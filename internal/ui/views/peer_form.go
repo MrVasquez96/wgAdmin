@@ -131,11 +131,9 @@ func (f *PeerForm) Show(parent fyne.Window) {
 		widget.NewLabel("Private Key (for client config generation)"),
 		container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry),
 		widget.NewLabel("Public Key (derived):"),
-		container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyLabel),
-		widget.NewSeparator(),
-		widget.NewLabel("Public Key *"),
-		f.publicKeyEntry,
+		container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyEntry),
 
+		widget.NewSeparator(),
 		widget.NewLabel("Allowed IPs * (client's VPN address)"),
 		f.allowedIPsEntry,
 

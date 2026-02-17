@@ -150,6 +150,9 @@ func (v *MainView) rebuild() {
 			OnEdit: func(name string) {
 				v.showEditTunnelForm(name)
 			},
+			OnPeers: func(name string) {
+				v.showEditPeersTunnelForm(name)
+			},
 			OnDelete: func(name string) {
 				v.confirmDeleteTunnel(name)
 			},
@@ -227,6 +230,49 @@ func (v *MainView) showEditTunnelForm(name string) {
 	}
 
 	// Check if active
+	opened := v.preCheckActiveDialog(name, config)
+	if !opened {
+		v.openEditForm(name, config)
+	}
+}
+func (v *MainView) showEditPeersTunnelForm(name string) {
+	path := wgController.GetConfigPath(name)
+	config, err := config.ParseConfig(path)
+	if err != nil {
+		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
+		return
+	}
+
+	// Check if active
+	opened := v.preCheckActiveDialog(name, config)
+	if !opened {
+		v.openPeersForm(name, config)
+	}
+}
+func (v *MainView) preCheckActiveDialog(name string, cfg *config.Config) bool {
+	// Check if active
+	iface := v.findInterface(name)
+	if iface != nil && iface.Active {
+		dialog.ShowConfirm("Tunnel Active",
+			fmt.Sprintf("Tunnel '%s' is currently active. It's recommended to deactivate before editing.\n\nContinue anyway?", name),
+			func(yes bool) {
+				if yes {
+					v.openEditForm(name, cfg)
+				}
+			}, v.window)
+		return true
+	}
+	return false
+}
+func (v *MainView) getEditForm(name string) {
+	path := wgController.GetConfigPath(name)
+	config, err := config.ParseConfig(path)
+	if err != nil {
+		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
+		return
+	}
+
+	// Check if active
 	iface := v.findInterface(name)
 	if iface != nil && iface.Active {
 		dialog.ShowConfirm("Tunnel Active",
@@ -243,17 +289,26 @@ func (v *MainView) showEditTunnelForm(name string) {
 }
 
 func (v *MainView) openEditForm(name string, cfg *config.Config) {
+	v.openForm(name, cfg, true)
+}
+func (v *MainView) openPeersForm(name string, cfg *config.Config) {
+	v.openForm(name, cfg, false)
+}
+
+func (v *MainView) openForm(name string, cfg *config.Config, isMain bool) {
 	form := NewTunnelForm(v.window, name, cfg, func(_ string, newConfig *config.Config) error {
 		err := wgController.WriteConfig(name, *newConfig)
-		// err := config.WriteConfig(wgDir, name, newConfig)
 		if err == nil {
 			v.Refresh()
 		}
 		return err
 	}, nil)
-	form.Show()
+	if isMain {
+		form.Show()
+	} else {
+		form.ShowPeers()
+	}
 }
-
 func (v *MainView) confirmDeleteTunnel(name string) {
 	iface := v.findInterface(name)
 

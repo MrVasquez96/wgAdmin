@@ -20,6 +20,7 @@ type InterfaceCardCallbacks struct {
 	OnToggle     func(name string, activate bool)
 	OnScan       func(name, ip string)
 	OnEdit       func(name string)
+	OnPeers      func(name string)
 	OnDelete     func(name string)
 	OnCopyPubKey func(pubKey string)
 }
@@ -123,6 +124,11 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 			c.callbacks.OnEdit(c.iface.Name)
 		}
 	})
+	editPeersBtn := widget.NewButtonWithIcon("Peers", theme.DocumentCreateIcon(), func() {
+		if c.callbacks.OnPeers != nil {
+			c.callbacks.OnPeers(c.iface.Name)
+		}
+	})
 
 	deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), func() {
 		if c.callbacks.OnDelete != nil {
@@ -145,6 +151,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		layout.NewSpacer(),
 		toggleBtn,
 		scanBtn,
+		editPeersBtn,
 		editBtn,
 		deleteBtn,
 	)
