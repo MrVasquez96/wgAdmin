@@ -12,7 +12,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/MrVasquez96/go-network/scanner"
+	scanner "github.com/MrVasquez96/go-ipscan"
 )
 
 // ScanView displays network scan results

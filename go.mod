@@ -4,14 +4,10 @@ go 1.24.5
 
 require (
 	fyne.io/fyne/v2 v2.7.0
-	github.com/MrVasquez96/go-network v0.0.0-00010101000000-000000000000
-	github.com/MrVasquez96/go-wg v0.0.3
+	github.com/MrVasquez96/go-ipscan v0.0.1
+	github.com/MrVasquez96/go-wg v0.0.1
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 )
-
-replace github.com/MrVasquez96/go-wg => ./go-wg
-
-replace github.com/MrVasquez96/go-network => ./go-network
 
 require (
 	fyne.io/systray v1.11.1-0.20250603113521-ca66a66d8b58 // indirect
