@@ -13,7 +13,8 @@ A GUI application for managing WireGuard VPN configurations on Linux.
 
 ## Requirements
 
-- Linux with WireGuard installed (`wg`, `wg-quick`)
+- ~~Linux with WireGuard installed (`wg`, `wg-quick`)~~
+- Linux with wireguard module loaded
 - Root privileges
 
 ## Installation
