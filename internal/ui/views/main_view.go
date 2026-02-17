@@ -51,7 +51,7 @@ func NewMainView(window fyne.Window) *MainView {
 // Build creates the main view content
 func (v *MainView) Build() fyne.CanvasObject {
 	// Title
-	title := canvas.NewText("wgAdmin", theme.ForegroundColor())
+	title := canvas.NewText("wgAdmin", theme.Color(theme.ColorNameForeground))
 	title.TextStyle = fyne.TextStyle{Bold: true}
 	title.TextSize = 24
 
