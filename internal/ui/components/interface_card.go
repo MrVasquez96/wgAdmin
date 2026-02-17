@@ -10,30 +10,31 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/MrVasquez96/go-wg/wg/config"
 
-	"wgAdmin/internal/models"
 	customTheme "wgAdmin/internal/ui/theme"
 )
 
 // InterfaceCardCallbacks holds callback functions for interface card actions
 type InterfaceCardCallbacks struct {
-	OnToggle func(name string, activate bool)
-	OnScan   func(name, ip string)
-	OnEdit   func(name string)
-	OnDelete func(name string)
+	OnToggle     func(name string, activate bool)
+	OnScan       func(name, ip string)
+	OnEdit       func(name string)
+	OnDelete     func(name string)
+	OnCopyPubKey func(pubKey string)
 }
 
 // InterfaceCard represents a card widget for a WireGuard interface
 type InterfaceCard struct {
 	widget.BaseWidget
 
-	iface     models.Interface
+	iface     config.Interface
 	callbacks InterfaceCardCallbacks
 	container *fyne.Container
 }
 
 // NewInterfaceCard creates a new interface card
-func NewInterfaceCard(iface models.Interface, callbacks InterfaceCardCallbacks) *InterfaceCard {
+func NewInterfaceCard(iface config.Interface, callbacks InterfaceCardCallbacks) *InterfaceCard {
 	card := &InterfaceCard{
 		iface:     iface,
 		callbacks: callbacks,
@@ -70,6 +71,25 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	// IP address
 	ipLabel := widget.NewLabel(fmt.Sprintf("IP: %s", c.iface.IP))
 	ipLabel.TextStyle = fyne.TextStyle{Monospace: true}
+
+	// Public key display with copy button
+	var pubKeyRow *fyne.Container
+	if c.iface.PublicKey != "" {
+		displayKey := c.iface.PublicKey
+		if len(displayKey) > 20 {
+			displayKey = displayKey[:20] + "..."
+		}
+		pubKeyLabel := widget.NewLabel(fmt.Sprintf("Public key: %s", displayKey))
+		pubKeyLabel.TextStyle = fyne.TextStyle{Monospace: true}
+
+		copyKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+			if c.callbacks.OnCopyPubKey != nil {
+				c.callbacks.OnCopyPubKey(c.iface.PublicKey)
+			}
+		})
+
+		pubKeyRow = container.NewHBox(pubKeyLabel, copyKeyBtn)
+	}
 
 	// Action buttons
 	var toggleBtn *widget.Button
@@ -129,11 +149,16 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		deleteBtn,
 	)
 
-	cardContent := container.NewBorder(
+	topRow := container.NewBorder(
 		nil, nil,
 		leftContent,
 		rightContent,
 	)
+
+	cardContent := container.NewVBox(topRow)
+	if pubKeyRow != nil {
+		cardContent.Add(pubKeyRow)
+	}
 
 	// Card background
 	var bgColor color.Color
@@ -147,7 +172,6 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	bg.CornerRadius = 12
 	bg.StrokeColor = customTheme.AppColors.Border(variant)
 	bg.StrokeWidth = 1
-
 	padded := container.NewPadded(cardContent)
 	return container.NewStack(bg, padded)
 }
@@ -159,5 +183,6 @@ func (c *InterfaceCard) CreateRenderer() fyne.WidgetRenderer {
 
 // MinSize returns the minimum size of the card
 func (c *InterfaceCard) MinSize() fyne.Size {
-	return fyne.NewSize(800, 100)
+	contentMin := c.container.MinSize()
+	return fyne.NewSize(800, contentMin.Height)
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"wgAdmin/internal/ui/components"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -12,9 +14,8 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"wgAdmin/internal/models"
-	"wgAdmin/internal/ui/components"
-	"wgAdmin/internal/wireguard"
+	"github.com/MrVasquez96/go-wg/wg"
+	"github.com/MrVasquez96/go-wg/wg/config"
 )
 
 // MainView is the main application view
@@ -26,10 +27,13 @@ type MainView struct {
 	filterEntry   *widget.Entry
 	autoRefresh   *widget.Check
 
-	interfaces  []models.Interface
+	interfaces  []config.Interface
 	stopAuto    chan struct{}
 	lastRefresh time.Time
 }
+
+var wgDir string = "/etc/wireguard"
+var wgController wg.WG = wg.New(wgDir)
 
 // NewMainView creates a new main view
 func NewMainView(window fyne.Window) *MainView {
@@ -107,7 +111,7 @@ func (v *MainView) Refresh() {
 	v.busyDialog.Show("Refreshing interfaces...")
 
 	go func() {
-		interfaces, err := wireguard.ListInterfaces()
+		interfaces, err := wgController.ListInterfaces()
 
 		fyne.DoAndWait(func() {
 			v.busyDialog.Hide()
@@ -149,6 +153,10 @@ func (v *MainView) rebuild() {
 			OnDelete: func(name string) {
 				v.confirmDeleteTunnel(name)
 			},
+			OnCopyPubKey: func(pubKey string) {
+				v.window.Clipboard().SetContent(pubKey)
+				v.statusBar.SetStatus("Public key copied to clipboard", true)
+			},
 		})
 
 		v.listContainer.Add(card)
@@ -169,16 +177,16 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 	v.busyDialog.Show(fmt.Sprintf("%s %s...", action, name))
 
 	go func() {
-		err := wireguard.ToggleInterface(name, activate)
+		err := wgController.ToggleInterface(name, activate)
 
 		fyne.Do(func() {
 			v.busyDialog.Hide()
 
-			if err != nil && !strings.Contains(err.Error(), wireguard.INVALID_ENDPOINT) {
+			if err != nil && !strings.Contains(err.Error(), "invalid endpoint") {
 				v.statusBar.SetStatus(fmt.Sprintf("Error: %v", err), false)
 			} else {
 				if err != nil {
-					if strings.Contains(err.Error(), wireguard.INVALID_ENDPOINT) {
+					if strings.Contains(err.Error(), "invalid endpoint") {
 						v.statusBar.SetStatus(
 							fmt.Sprintf("Failed to reach endpoint for '%s' at %s", name, v.lastRefresh.Format(time.Kitchen)),
 							false,
@@ -199,8 +207,9 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 }
 
 func (v *MainView) showAddTunnelForm() {
-	form := NewTunnelForm(v.window, "", nil, func(name string, config *models.Config) error {
-		err := wireguard.WriteConfig(name, config)
+	form := NewTunnelForm(v.window, "", nil, func(name string, cfg *config.Config) error {
+		err := wgController.WriteConfig(name, *cfg)
+		// err := config.WriteConfig(wgDir, name, cfg)
 		if err == nil {
 			v.Refresh()
 		}
@@ -210,8 +219,8 @@ func (v *MainView) showAddTunnelForm() {
 }
 
 func (v *MainView) showEditTunnelForm(name string) {
-	path := wireguard.GetConfigPath(name)
-	config, err := wireguard.ParseConfig(path)
+	path := wgController.GetConfigPath(name)
+	config, err := config.ParseConfig(path)
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
 		return
@@ -233,9 +242,10 @@ func (v *MainView) showEditTunnelForm(name string) {
 	v.openEditForm(name, config)
 }
 
-func (v *MainView) openEditForm(name string, config *models.Config) {
-	form := NewTunnelForm(v.window, name, config, func(_ string, newConfig *models.Config) error {
-		err := wireguard.WriteConfig(name, newConfig)
+func (v *MainView) openEditForm(name string, cfg *config.Config) {
+	form := NewTunnelForm(v.window, name, cfg, func(_ string, newConfig *config.Config) error {
+		err := wgController.WriteConfig(name, *newConfig)
+		// err := config.WriteConfig(wgDir, name, newConfig)
 		if err == nil {
 			v.Refresh()
 		}
@@ -247,7 +257,7 @@ func (v *MainView) openEditForm(name string, config *models.Config) {
 func (v *MainView) confirmDeleteTunnel(name string) {
 	iface := v.findInterface(name)
 
-	msg := fmt.Sprintf("Delete tunnel '%s'?\n\nThis will remove:\n%s", name, wireguard.GetConfigPath(name))
+	msg := fmt.Sprintf("Delete tunnel '%s'?\n\nThis will remove:\n%s", name, wgController.GetConfigPath(name))
 	if iface != nil && iface.Active {
 		msg += "\n\nWarning: This tunnel is currently active and will be deactivated."
 	}
@@ -262,10 +272,10 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 		go func() {
 			// Deactivate if active
 			if iface != nil && iface.Active {
-				_ = wireguard.ToggleInterface(name, false)
+				_ = wgController.ToggleInterface(name, false)
 			}
 
-			err := wireguard.DeleteInterface(name, true)
+			err := wgController.DeleteInterface(name, true)
 
 			fyne.DoAndWait(func() {
 				v.busyDialog.Hide()
@@ -282,7 +292,7 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 	}, v.window)
 }
 
-func (v *MainView) findInterface(name string) *models.Interface {
+func (v *MainView) findInterface(name string) *config.Interface {
 	for _, iface := range v.interfaces {
 		if iface.Name == name {
 			return &iface

@@ -5,14 +5,14 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
-	"wgAdmin/internal/models"
-	"wgAdmin/internal/scanner"
+	"github.com/MrVasquez96/go-network/scanner"
 )
 
 // ScanView displays network scan results
@@ -87,10 +87,10 @@ func (v *ScanView) Show() {
 		})
 	}()
 
-	go s.Run()
+	go s.Run(100, 2*time.Second)
 }
 
-func makeScanRow(r models.ScanResult) fyne.CanvasObject {
+func makeScanRow(r scanner.ScanResult) fyne.CanvasObject {
 	host := ""
 	if len(r.Hostnames) > 0 {
 		host = r.Hostnames[0]
