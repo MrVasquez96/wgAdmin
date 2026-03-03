@@ -1,4 +1,4 @@
-package components
+package wgwidget
 
 import (
 	"fyne.io/fyne/v2"

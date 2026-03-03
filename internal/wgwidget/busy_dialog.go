@@ -1,4 +1,4 @@
-package components
+package wgwidget
 
 import (
 	"sync"
@@ -24,7 +24,7 @@ func NewBusyDialog(window fyne.Window) *BusyDialog {
 }
 
 // Show displays the busy dialog with a message
-func (b *BusyDialog) Show(msg string) {
+func (b *BusyDialog) Show(title,msg string) {
 	fyne.Do(func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
@@ -37,7 +37,7 @@ func (b *BusyDialog) Show(msg string) {
 		label := widget.NewLabel(msg)
 		content := container.NewVBox(label, spinner)
 
-		b.dialog = dialog.NewCustomWithoutButtons("Working...", content, b.window)
+		b.dialog = dialog.NewCustomWithoutButtons(title, content, b.window)
 		b.dialog.Show()
 	})
 }

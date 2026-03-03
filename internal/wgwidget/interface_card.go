@@ -1,4 +1,4 @@
-package components
+package wgwidget
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/MrVasquez96/go-wg/wg/config"
 
-	customTheme "wgAdmin/internal/ui/theme"
+	customTheme "wgAdmin/internal/theme"
 )
 
 // InterfaceCardCallbacks holds callback functions for interface card actions
@@ -65,7 +65,6 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	}
 
 	statusDot := canvas.NewCircle(statusColor)
-	//statusDot.SetMinSize(fyne.NewSize(10, 10))
 	statusLabel := widget.NewLabel(statusText)
 	statusBadge := container.NewHBox(statusDot, statusLabel)
 
