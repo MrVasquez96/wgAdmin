@@ -1,11 +1,13 @@
-package views
+package ui
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	"wgAdmin/internal/ui/components"
+	"wgAdmin/internal/settings"
+	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgwidget"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -21,29 +23,31 @@ import (
 // MainView is the main application view
 type MainView struct {
 	window        fyne.Window
+	ctrl          *wg.WG
+	settings      *settings.AppSettings
 	listContainer *fyne.Container
-	statusBar     *components.StatusBar
-	busyDialog    *components.BusyDialog
+	statusBar     *wgwidget.StatusBar
+	busyDialog    *wgwidget.BusyDialog
 	filterEntry   *widget.Entry
 	autoRefresh   *widget.Check
+	hint          *widget.RichText
 
 	interfaces  []config.Interface
 	stopAuto    chan struct{}
 	lastRefresh time.Time
 }
 
-var wgDir string = "/etc/wireguard"
-var wgController wg.WG = wg.New(wgDir)
-
 // NewMainView creates a new main view
-func NewMainView(window fyne.Window) *MainView {
+func NewMainView(window fyne.Window, ctrl *wg.WG, cfg *settings.AppSettings) *MainView {
 	return &MainView{
 		window:        window,
+		ctrl:          ctrl,
+		settings:      cfg,
 		listContainer: container.NewVBox(),
-		statusBar:     components.NewStatusBar(),
-		busyDialog:    components.NewBusyDialog(window),
+		statusBar:     wgwidget.NewStatusBar(),
+		busyDialog:    wgwidget.NewBusyDialog(window),
 		filterEntry:   widget.NewEntry(),
-		autoRefresh:   widget.NewCheck("Auto refresh (5s)", nil),
+		autoRefresh:   widget.NewCheck(fmt.Sprintf("Auto refresh (%ds)", cfg.AutoRefreshSecs), nil),
 		stopAuto:      make(chan struct{}),
 	}
 }
@@ -82,9 +86,22 @@ func (v *MainView) Build() fyne.CanvasObject {
 		}
 	}
 
+	// Settings button
+	settingsBtn := widget.NewButtonWithIcon("", theme.SettingsIcon(), func() {
+		sv := NewSettingsView(v.window, v.settings, func(updated *settings.AppSettings) {
+			v.applySettings(updated)
+		})
+		sv.Show()
+	})
+
+	// Auto-refresh on startup if configured
+	if v.settings.AutoRefreshEnabled {
+		v.autoRefresh.SetChecked(true)
+	}
+
 	// Header layout
 	leftHeader := container.NewHBox(title)
-	rightHeader := container.NewHBox(addBtn, filterContainer, v.autoRefresh, refreshBtn)
+	rightHeader := container.NewHBox(addBtn, filterContainer, v.autoRefresh, refreshBtn, settingsBtn)
 	header := container.NewBorder(nil, nil, leftHeader, rightHeader)
 
 	// Scrollable list
@@ -92,13 +109,14 @@ func (v *MainView) Build() fyne.CanvasObject {
 	scroll.SetMinSize(fyne.NewSize(860, 480))
 
 	// Footer hint
-	hint := widget.NewRichTextFromMarkdown("Configs: `/etc/wireguard` | Native WireGuard | Requires root privileges")
-	hint.Wrapping = fyne.TextWrapWord
+	v.hint = widget.NewRichTextFromMarkdown(
+		fmt.Sprintf("Configs: `%s` | Native WireGuard | Requires root privileges", v.settings.WGConfigPath))
+	v.hint.Wrapping = fyne.TextWrapWord
 
 	// Main content
 	content := container.NewBorder(
 		header,
-		container.NewVBox(hint, v.statusBar),
+		container.NewVBox(v.hint, v.statusBar),
 		nil, nil,
 		scroll,
 	)
@@ -108,10 +126,10 @@ func (v *MainView) Build() fyne.CanvasObject {
 
 // Refresh reloads the interface list
 func (v *MainView) Refresh() {
-	v.busyDialog.Show("Refreshing interfaces...")
+	v.busyDialog.Show("Refresh", "Refreshing interfaces...")
 
 	go func() {
-		interfaces, err := wgController.ListInterfaces()
+		interfaces, err := v.ctrl.ListInterfaces()
 
 		fyne.DoAndWait(func() {
 			v.busyDialog.Hide()
@@ -139,12 +157,12 @@ func (v *MainView) rebuild() {
 		}
 
 		ifaceCopy := iface
-		card := components.NewInterfaceCard(ifaceCopy, components.InterfaceCardCallbacks{
+		card := wgwidget.NewInterfaceCard(ifaceCopy, wgwidget.InterfaceCardCallbacks{
 			OnToggle: func(name string, activate bool) {
 				v.toggleInterface(name, activate)
 			},
 			OnScan: func(name, ip string) {
-				scanView := NewScanView(name, ip)
+				scanView := NewScanView(name, ip, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs)
 				scanView.Show()
 			},
 			OnEdit: func(name string) {
@@ -163,7 +181,7 @@ func (v *MainView) rebuild() {
 		})
 
 		v.listContainer.Add(card)
-		if i != len(v.interfaces)-1 { // Skip seperator on last card
+		if i != len(v.interfaces)-1 {
 			v.listContainer.Add(widget.NewSeparator())
 		}
 	}
@@ -177,10 +195,10 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 		action = "Activating"
 	}
 
-	v.busyDialog.Show(fmt.Sprintf("%s %s...", action, name))
+	v.busyDialog.Show(name, fmt.Sprintf("%s...", action))
 
 	go func() {
-		err := wgController.ToggleInterface(name, activate)
+		err := v.ctrl.ToggleInterface(name, activate)
 
 		fyne.Do(func() {
 			v.busyDialog.Hide()
@@ -210,47 +228,45 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 }
 
 func (v *MainView) showAddTunnelForm() {
-	form := NewTunnelForm(v.window, "", nil, func(name string, cfg *config.Config) error {
-		err := wgController.WriteConfig(name, *cfg)
-		// err := config.WriteConfig(wgDir, name, cfg)
+	form := NewTunnelForm(v.window, v.ctrl, "", nil, func(name string, cfg *config.Config) error {
+		err := v.ctrl.WriteConfig(name, *cfg)
 		if err == nil {
 			v.Refresh()
 		}
 		return err
-	}, nil)
+	}, nil, v.settings.ClientConfigDir)
 	form.Show()
 }
 
 func (v *MainView) showEditTunnelForm(name string) {
-	path := wgController.GetConfigPath(name)
-	config, err := config.ParseConfig(path)
+	path := v.ctrl.GetConfigPath(name)
+	cfg, err := config.ParseConfig(path)
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
 		return
 	}
 
-	// Check if active
-	opened := v.preCheckActiveDialog(name, config)
+	opened := v.preCheckActiveDialog(name, cfg)
 	if !opened {
-		v.openEditForm(name, config)
+		v.openEditForm(name, cfg)
 	}
 }
+
 func (v *MainView) showEditPeersTunnelForm(name string) {
-	path := wgController.GetConfigPath(name)
-	config, err := config.ParseConfig(path)
+	path := v.ctrl.GetConfigPath(name)
+	cfg, err := config.ParseConfig(path)
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
 		return
 	}
 
-	// Check if active
-	opened := v.preCheckActiveDialog(name, config)
+	opened := v.preCheckActiveDialog(name, cfg)
 	if !opened {
-		v.openPeersForm(name, config)
+		v.openPeersForm(name, cfg)
 	}
 }
+
 func (v *MainView) preCheckActiveDialog(name string, cfg *config.Config) bool {
-	// Check if active
 	iface := v.findInterface(name)
 	if iface != nil && iface.Active {
 		dialog.ShowConfirm("Tunnel Active",
@@ -264,73 +280,42 @@ func (v *MainView) preCheckActiveDialog(name string, cfg *config.Config) bool {
 	}
 	return false
 }
-func (v *MainView) getEditForm(name string) {
-	path := wgController.GetConfigPath(name)
-	config, err := config.ParseConfig(path)
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
-		return
-	}
-
-	// Check if active
-	iface := v.findInterface(name)
-	if iface != nil && iface.Active {
-		dialog.ShowConfirm("Tunnel Active",
-			fmt.Sprintf("Tunnel '%s' is currently active. It's recommended to deactivate before editing.\n\nContinue anyway?", name),
-			func(yes bool) {
-				if yes {
-					v.openEditForm(name, config)
-				}
-			}, v.window)
-		return
-	}
-
-	v.openEditForm(name, config)
-}
 
 func (v *MainView) openEditForm(name string, cfg *config.Config) {
 	v.openForm(name, cfg, true)
 }
+
 func (v *MainView) openPeersForm(name string, cfg *config.Config) {
 	v.openForm(name, cfg, false)
 }
 
 func (v *MainView) openForm(name string, cfg *config.Config, isMain bool) {
-	form := NewTunnelForm(v.window, name, cfg, func(_ string, newConfig *config.Config) error {
-		err := wgController.WriteConfig(name, *newConfig)
+	form := NewTunnelForm(v.window, v.ctrl, name, cfg, func(_ string, newConfig *config.Config) error {
+		err := v.ctrl.WriteConfig(name, *newConfig)
 		if err == nil {
 			v.Refresh()
 		}
 		return err
-	}, nil)
+	}, nil, v.settings.ClientConfigDir)
 	if isMain {
 		form.Show()
 	} else {
 		form.ShowPeers()
 	}
 }
+
 func (v *MainView) confirmDeleteTunnel(name string) {
 	iface := v.findInterface(name)
 
-	msg := fmt.Sprintf("Delete tunnel '%s'?\n\nThis will remove:\n%s", name, wgController.GetConfigPath(name))
-	if iface != nil && iface.Active {
-		msg += "\n\nWarning: This tunnel is currently active and will be deactivated."
-	}
-
-	dialog.ShowConfirm("Delete Tunnel", msg, func(yes bool) {
-		if !yes {
-			return
-		}
-
-		v.busyDialog.Show(fmt.Sprintf("Deleting %s...", name))
+	deleteFn := func() {
+		v.busyDialog.Show("Delete Tunnel", fmt.Sprintf("Deleting %s...", name))
 
 		go func() {
-			// Deactivate if active
 			if iface != nil && iface.Active {
-				_ = wgController.ToggleInterface(name, false)
+				_ = v.ctrl.ToggleInterface(name, false)
 			}
 
-			err := wgController.DeleteInterface(name, true)
+			err := v.ctrl.DeleteInterface(name, true)
 
 			fyne.DoAndWait(func() {
 				v.busyDialog.Hide()
@@ -344,6 +329,23 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 				v.Refresh()
 			})
 		}()
+	}
+
+	if !v.settings.ConfirmBeforeDelete {
+		deleteFn()
+		return
+	}
+
+	msg := fmt.Sprintf("Delete tunnel '%s'?\n\nThis will remove:\n%s", name, v.ctrl.GetConfigPath(name))
+	if iface != nil && iface.Active {
+		msg += "\n\nWarning: This tunnel is currently active and will be deactivated."
+	}
+
+	dialog.ShowConfirm("Delete Tunnel", msg, func(yes bool) {
+		if !yes {
+			return
+		}
+		deleteFn()
 	}, v.window)
 }
 
@@ -357,7 +359,7 @@ func (v *MainView) findInterface(name string) *config.Interface {
 }
 
 func (v *MainView) startAutoRefresh() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Duration(v.settings.AutoRefreshSecs) * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -375,4 +377,42 @@ func (v *MainView) stopAutoRefresh() {
 	case v.stopAuto <- struct{}{}:
 	default:
 	}
+}
+
+func (v *MainView) applySettings(updated *settings.AppSettings) {
+	oldPath := v.settings.WGConfigPath
+	v.settings = updated
+
+	// Re-initialize controller if path changed
+	if updated.WGConfigPath != oldPath {
+		newCtrl := wg.New(updated.WGConfigPath)
+		v.ctrl = &newCtrl
+	}
+
+	// Restart auto-refresh with new interval
+	v.stopAutoRefresh()
+	if v.autoRefresh.Checked {
+		go v.startAutoRefresh()
+	}
+
+	// Update auto-refresh label
+	v.autoRefresh.Text = fmt.Sprintf("Auto refresh (%ds)", updated.AutoRefreshSecs)
+	v.autoRefresh.Refresh()
+
+	// Update footer hint
+	v.hint.ParseMarkdown(
+		fmt.Sprintf("Configs: `%s` | Native WireGuard | Requires root privileges", updated.WGConfigPath))
+
+	// Apply theme variant
+	a := fyne.CurrentApp()
+	switch updated.ThemeVariant {
+	case "light":
+		a.Settings().SetTheme(wgtheme.NewWGAdminTheme())
+	case "dark":
+		a.Settings().SetTheme(wgtheme.NewWGAdminTheme())
+	default:
+		a.Settings().SetTheme(wgtheme.NewWGAdminTheme())
+	}
+
+	v.Refresh()
 }
