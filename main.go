@@ -4,16 +4,72 @@ import (
 	"fmt"
 	"os"
 
+	"wgAdmin/fyneExtra/theme"
+	"wgAdmin/internal/settings"
 	"wgAdmin/internal/ui"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"github.com/MrVasquez96/go-wg/wg"
 )
 
 func main() {
-	if os.Geteuid() != 0 {
+	a := app.NewWithID("com.wireguard.manager")
+
+	cfg := settings.Load(a.Preferences())
+
+	// Apply theme
+	a.Settings().SetTheme(theme.NewWGAdminTheme())
+	applyThemeVariant(a, cfg.ThemeVariant)
+
+	// Privilege escalation via pkexec (before creating any windows).
+	// We spawn a new root process and then quit this one gracefully.
+	if os.Geteuid() != 0 && cfg.PrivilegeEscalation == "pkexec" {
+		if settings.PkexecAvailable() {
+			if err := settings.RelaunchWithPkexec(); err != nil {
+				fmt.Fprintf(os.Stderr, "pkexec failed: %v\n", err)
+			} else {
+				// New process spawned — exit this one.
+				// Cannot use a.Quit() here since ShowAndRun hasn't been called.
+				return
+			}
+		} else {
+			fmt.Fprintln(os.Stderr, "pkexec not available, continuing without root.")
+		}
+	}
+
+	if os.Geteuid() != 0 && cfg.PrivilegeEscalation == "none" {
 		fmt.Fprintln(os.Stderr, "Warning: This application typically requires root privileges for WireGuard operations.")
 		fmt.Fprintln(os.Stderr, "Some features may not work correctly without elevated permissions.")
 		fmt.Fprintln(os.Stderr, "")
 	}
 
-	app := ui.NewApp()
-	app.Run()
+	ctrl := wg.New(cfg.WGConfigPath)
+
+	w := a.NewWindow("wgAdmin")
+	w.Resize(fyne.NewSize(float32(cfg.WindowWidth), float32(cfg.WindowHeight)))
+	if cfg.StartFullscreen {
+		w.SetFullScreen(true)
+	}
+
+	mainView := ui.NewMainView(w, &ctrl, cfg).Build()
+	w.SetContent(mainView)
+	mainView.Refresh()
+
+	// If sudo mode is selected and not root, show password dialog over the main UI.
+	// On successful auth, a new root process is spawned and this app quits gracefully.
+	if os.Geteuid() != 0 && cfg.PrivilegeEscalation == "sudo" {
+		settings.ShowSudoRelaunchDialog(w)
+	}
+
+	w.ShowAndRun()
+}
+
+func applyThemeVariant(a fyne.App, variant string) {
+	switch variant {
+	case "light":
+		os.Setenv("FYNE_THEME", "light")
+	case "dark":
+		os.Setenv("FYNE_THEME", "dark")
+	}
 }
