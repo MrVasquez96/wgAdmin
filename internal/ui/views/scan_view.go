@@ -1,4 +1,4 @@
-package views
+package ui
 
 import (
 	"fmt"
@@ -17,15 +17,19 @@ import (
 
 // ScanView displays network scan results
 type ScanView struct {
-	ifaceName string
-	cidr      string
+	ifaceName   string
+	cidr        string
+	workers     int
+	timeoutSecs int
 }
 
 // NewScanView creates a new scan view
-func NewScanView(ifaceName, ip string) *ScanView {
+func NewScanView(ifaceName, ip string, workers, timeoutSecs int) *ScanView {
 	return &ScanView{
-		ifaceName: ifaceName,
-		cidr:      scanner.DeriveCIDR24(ip),
+		ifaceName:   ifaceName,
+		cidr:        scanner.DeriveCIDR24(ip),
+		workers:     workers,
+		timeoutSecs: timeoutSecs,
 	}
 }
 
@@ -43,7 +47,6 @@ func (v *ScanView) Show() {
 	resultsContainer := container.NewVBox()
 	resultsScroll := container.NewVScroll(resultsContainer)
 
-	// Header
 	header := container.NewHBox(
 		widget.NewLabel("CIDR:"),
 		widget.NewLabel(v.cidr),
@@ -59,7 +62,6 @@ func (v *ScanView) Show() {
 	))
 	win.Show()
 
-	// Start scan
 	s, err := scanner.NewScanner(v.cidr)
 	if err != nil {
 		dialog.ShowError(err, win)
@@ -87,7 +89,7 @@ func (v *ScanView) Show() {
 		})
 	}()
 
-	go s.Run(100, 2*time.Second)
+	go s.Run(v.workers, time.Duration(v.timeoutSecs)*time.Second)
 }
 
 func makeScanRow(r scanner.ScanResult) fyne.CanvasObject {
@@ -117,10 +119,10 @@ type ScanViewWithProgress struct {
 }
 
 // NewScanViewWithProgress creates a scan view with progress tracking
-func NewScanViewWithProgress(ifaceName, ip string) *ScanViewWithProgress {
+func NewScanViewWithProgress(ifaceName, ip string, workers, timeoutSecs int) *ScanViewWithProgress {
 	var count uint32
 	return &ScanViewWithProgress{
-		ScanView:     NewScanView(ifaceName, ip),
+		ScanView:     NewScanView(ifaceName, ip, workers, timeoutSecs),
 		scannedCount: &count,
 	}
 }

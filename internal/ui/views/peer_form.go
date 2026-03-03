@@ -1,4 +1,4 @@
-package views
+package ui
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ type PeerForm struct {
 	persistentKeepaliveEntry *widget.Entry
 	presharedKeyEntry        *widget.Entry
 
-	generatedPrivateKey string // In-memory only, never persisted to server config
+	generatedPrivateKey string
 
 	onSave   func(peer config.PeerConfig, privateKey string)
 	onCancel func()
@@ -55,7 +55,6 @@ func NewPeerForm(existing *config.PeerConfig, onSave func(config.PeerConfig, str
 	f.persistentKeepaliveEntry.SetPlaceHolder("e.g., 25 (seconds, optional)")
 	f.presharedKeyEntry.SetPlaceHolder("Base64 encoded key (optional)")
 
-	// Update public key when private key changes
 	f.privateKeyEntry.OnChanged = func(s string) {
 		f.updatePublicKey()
 	}
@@ -64,7 +63,6 @@ func NewPeerForm(existing *config.PeerConfig, onSave func(config.PeerConfig, str
 		f.nameEntry.SetText(existing.Name)
 		f.publicKeyEntry.SetText(existing.PublicKey.String())
 
-		// Convert AllowedIPs to string
 		ips := make([]string, len(existing.AllowedIPs))
 		for i, ip := range existing.AllowedIPs {
 			ips[i] = ip.String()
@@ -170,14 +168,12 @@ func (f *PeerForm) Show(parent fyne.Window) {
 func (f *PeerForm) validate() (config.PeerConfig, []error) {
 	peer := config.PeerConfig{}
 
-	// Parse Name
 	name := strings.TrimSpace(f.nameEntry.Text)
 	if name == "" {
 		return peer, []error{wg.ValidationError{Field: "Peer.Name", Message: "required"}}
 	}
 	peer.Name = name
 
-	// Parse PublicKey
 	if f.publicKeyEntry.Text == "" {
 		return peer, []error{wg.ValidationError{Field: "Peer.PublicKey", Message: "required"}}
 	}
@@ -190,7 +186,6 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 	}
 	peer.PublicKey = pubKey
 
-	// Parse AllowedIPs
 	if f.allowedIPsEntry.Text == "" {
 		return peer, []error{wg.ValidationError{Field: "Peer.AllowedIPs", Message: "required"}}
 	}
@@ -213,7 +208,6 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 		peer.AllowedIPs = append(peer.AllowedIPs, *ipNet)
 	}
 
-	// Parse PersistentKeepalive
 	if f.persistentKeepaliveEntry.Text != "" {
 		keepalive, err := strconv.Atoi(f.persistentKeepaliveEntry.Text)
 		if err != nil {
@@ -225,7 +219,6 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 		peer.PersistentKeepalive = time.Duration(keepalive) * time.Second
 	}
 
-	// Parse PresharedKey
 	if f.presharedKeyEntry.Text != "" {
 		if !wg.ValidateKey(f.presharedKeyEntry.Text) {
 			return peer, []error{wg.ValidationError{Field: "Peer.PresharedKey", Message: "invalid format"}}

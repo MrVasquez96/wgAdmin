@@ -194,7 +194,7 @@ func (t *WGAdminTheme) Size(name fyne.ThemeSizeName) float32 {
 	return theme.DefaultTheme().Size(name)
 }
 
-// Colors returns pre-defined colors for use in the app
+// Colors provides pre-defined colors for use in the app
 type Colors struct{}
 
 // Active returns the active/success color

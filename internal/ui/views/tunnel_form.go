@@ -1,4 +1,4 @@
-package views
+package ui
 
 import (
 	"fmt"
@@ -23,9 +23,11 @@ import (
 
 // TunnelForm handles tunnel creation and editing
 type TunnelForm struct {
-	window fyne.Window
-	isEdit bool
-	name   string
+	window         fyne.Window
+	ctrl           *wg.WG
+	isEdit         bool
+	name           string
+	clientConfigDir string
 
 	// Interface fields
 	nameEntry           *widget.Entry
@@ -42,7 +44,7 @@ type TunnelForm struct {
 	// Peers
 	peers           []config.PeerConfig
 	peersList       *widget.List
-	peerPrivateKeys map[string]string // peer public key -> peer private key (for client config generation)
+	peerPrivateKeys map[string]string
 
 	// Callbacks
 	onSave   func(name string, config *config.Config) error
@@ -50,7 +52,7 @@ type TunnelForm struct {
 }
 
 // NewTunnelForm creates a new tunnel form
-func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *config.Config, onSave func(string, *config.Config) error, onCancel func()) *TunnelForm {
+func NewTunnelForm(parent fyne.Window, ctrl *wg.WG, existingName string, existingConfig *config.Config, onSave func(string, *config.Config) error, onCancel func(), clientConfigDir string) *TunnelForm {
 	tunnelName := existingName
 	isEdit := existingName != ""
 	if isEdit {
@@ -59,8 +61,10 @@ func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *conf
 
 	f := &TunnelForm{
 		window:              parent,
+		ctrl:                ctrl,
 		isEdit:              existingName != "",
 		name:                tunnelName,
+		clientConfigDir:     clientConfigDir,
 		nameEntry:           widget.NewEntry(),
 		privateKeyEntry:     widget.NewEntry(),
 		publicKeyLabel:      widget.NewLabel(""),
@@ -98,14 +102,12 @@ func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *conf
 		}
 		f.privateKeyEntry.SetText(existingConfig.Interface.PrivateKey.String())
 
-		// Convert addresses to string
 		addrs := make([]string, len(existingConfig.Interface.Address))
 		for i, addr := range existingConfig.Interface.Address {
 			addrs[i] = addr.String()
 		}
 		f.addressEntry.SetText(strings.Join(addrs, ", "))
 
-		// Convert DNS to string
 		dnsAddrs := make([]string, len(existingConfig.Interface.DNS))
 		for i, dns := range existingConfig.Interface.DNS {
 			dnsAddrs[i] = dns.String()
@@ -125,7 +127,6 @@ func NewTunnelForm(parent fyne.Window, existingName string, existingConfig *conf
 		f.updatePublicKey()
 	}
 
-	// Update public key when private key changes
 	f.privateKeyEntry.OnChanged = func(s string) {
 		f.updatePublicKey()
 	}
@@ -146,17 +147,13 @@ func (f *TunnelForm) updatePublicKey() {
 	}
 }
 
-// getTunnelName returns the clean tunnel name (e.g., "wg0") from the form state.
 func (f *TunnelForm) getTunnelName() string {
 	if !f.isEdit {
 		return f.nameEntry.Text
 	}
-	// In edit mode, f.name contains the config comment name like "[wg0] Public key: ..."
-	// Extract the raw name from it
 	if i := strings.Index(f.name, "]"); i > 0 && strings.HasPrefix(f.name, "[") {
 		return f.name[1:i]
 	}
-	// Fallback: use the disabled name entry text
 	return f.nameEntry.Text
 }
 
@@ -170,7 +167,6 @@ func (f *TunnelForm) Show() {
 	win := fyne.CurrentApp().NewWindow(title)
 	win.Resize(fyne.NewSize(600, 700))
 
-	// Interface section
 	generateKeyBtn := widget.NewButtonWithIcon("Generate Keys", theme.ViewRefreshIcon(), func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
@@ -187,42 +183,27 @@ func (f *TunnelForm) Show() {
 		}
 	})
 
-	// 1. Prepare Composite Widgets (Input + Button on same line)
-	// We use Border layout: Button on Right, Entry in Center
 	privKeyRow := container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry)
 	pubKeyRow := container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyLabel)
 
-	// 2. Configure Multi-line entries for Scripts
-	// Instead of GridWrap, we simply tell the entry to support multiline
-	// and set a minimum visible height.
 	f.postUpEntry.MultiLine = true
 	f.postUpEntry.SetMinRowsVisible(3)
 	f.postDownEntry.MultiLine = true
 	f.postDownEntry.SetMinRowsVisible(3)
 
-	// 3. Create the Form
-	// widget.Form handles the alignment of labels perfectly.
 	interfaceForm := widget.NewForm(
 		widget.NewFormItem("Tunnel Name", f.nameEntry),
-		// A separator isn't a form item, so we can group these logicially later,
-		// or just keep it one big form. Here is one clean list:
-
 		widget.NewFormItem("Private Key", privKeyRow),
 		widget.NewFormItem("Public Key", pubKeyRow),
-
-		// Network Config
 		widget.NewFormItem("Address (CIDR)", f.addressEntry),
 		widget.NewFormItem("DNS", f.dnsEntry),
 		widget.NewFormItem("Listen Port", f.listenPortEntry),
 		widget.NewFormItem("Endpoint", f.publicEndpointEntry),
 		widget.NewFormItem("MTU", f.mtuEntry),
-
-		// Scripts
 		widget.NewFormItem("PostUp", f.postUpEntry),
 		widget.NewFormItem("PostDown", f.postDownEntry),
 	)
 
-	// Action buttons
 	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
@@ -236,9 +217,7 @@ func (f *TunnelForm) Show() {
 			dialog.ShowError(err, win)
 			return
 		}
-		// Generate client configs for peers with private keys
 		f.generateClientConfigs(name, cfg, win)
-
 		win.Close()
 	})
 	saveBtn.Importance = widget.HighImportance
@@ -252,7 +231,6 @@ func (f *TunnelForm) Show() {
 
 	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
 
-	// Main layout
 	content := container.NewBorder(
 		nil,
 		buttons,
@@ -265,8 +243,9 @@ func (f *TunnelForm) Show() {
 	win.SetContent(container.NewPadded(content))
 	win.Show()
 }
-func (f *TunnelForm) ShowPeers() {
 
+// ShowPeers displays the peers editing form
+func (f *TunnelForm) ShowPeers() {
 	title := "Peers / Clients"
 	if f.isEdit {
 		title = "Edit Peer: " + f.name
@@ -274,7 +253,7 @@ func (f *TunnelForm) ShowPeers() {
 
 	win := fyne.CurrentApp().NewWindow(title)
 	win.Resize(fyne.NewSize(600, 700))
-	// Peers section
+
 	f.peersList = widget.NewList(
 		func() int { return len(f.peers) },
 		func() fyne.CanvasObject {
@@ -329,6 +308,7 @@ func (f *TunnelForm) ShowPeers() {
 			}
 		},
 	)
+
 	addPeerBtn := widget.NewButtonWithIcon("Add Peer", theme.ContentAddIcon(), func() {
 		peerForm := NewPeerForm(nil, func(p config.PeerConfig, privateKey string) {
 			f.peers = append(f.peers, p)
@@ -339,6 +319,7 @@ func (f *TunnelForm) ShowPeers() {
 		}, nil)
 		peerForm.Show(win)
 	})
+
 	sizedList := container.NewGridWrap(
 		fyne.NewSize(560, float32(f.peersList.Length()*50)),
 		f.peersList,
@@ -350,7 +331,7 @@ func (f *TunnelForm) ShowPeers() {
 		nil, nil,
 		sizedList,
 	)
-	// Action buttons
+
 	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
@@ -364,9 +345,7 @@ func (f *TunnelForm) ShowPeers() {
 			dialog.ShowError(err, win)
 			return
 		}
-		// Generate client configs for peers with private keys
 		f.generateClientConfigs(name, cfg, win)
-
 		win.Close()
 	})
 	saveBtn.Importance = widget.HighImportance
@@ -380,7 +359,6 @@ func (f *TunnelForm) ShowPeers() {
 
 	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
 
-	// Main layout
 	content := container.NewBorder(
 		nil,
 		buttons,
@@ -394,15 +372,12 @@ func (f *TunnelForm) ShowPeers() {
 	win.Show()
 }
 
-// generateClientConfigs creates client .conf files for each peer that has a generated private key.
-// Configs are saved to ./clients/{tunnelName}/{peerName}.conf relative to the project root.
 func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.Config, win fyne.Window) {
 	if len(f.peerPrivateKeys) == 0 {
 		return
 	}
 
 	if f.publicEndpointEntry.Text == "" {
-		// Can't generate client configs without a server endpoint
 		dialog.ShowInformation("Client Configs",
 			"No public endpoint set - skipping client config generation.\nSet the Public Endpoint field to generate client configs.", win)
 		fmt.Println("Empty endpoint")
@@ -418,8 +393,7 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 	}
 	port, _ := strconv.Atoi(portStr)
 
-	// Save client configs to ./clients/{tunnelName}/ relative to project root
-	clientDir := filepath.Join("clients", tunnelName)
+	clientDir := filepath.Join(f.clientConfigDir, tunnelName)
 	if err := os.MkdirAll(clientDir, 0755); err != nil {
 		dialog.ShowError(fmt.Errorf("failed to create client config directory: %w", err), win)
 		return
@@ -449,7 +423,6 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 			PersistentKeepalive: int(peer.PersistentKeepalive.Seconds()),
 		}
 
-		// Rename existing client config to allow overwrite
 		clientPath := filepath.Join(clientDir, peer.Name+".conf")
 		_, err := os.Stat(clientPath)
 		if os.IsExist(err) {
@@ -479,7 +452,6 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 		Peers: f.peers,
 	}
 
-	// Parse PrivateKey
 	if f.privateKeyEntry.Text == "" {
 		return nil, []error{wg.ValidationError{Field: "PrivateKey", Message: "required"}}
 	}
@@ -492,7 +464,6 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 	}
 	cfg.Interface.PrivateKey = privKey
 
-	// Parse Address
 	if f.addressEntry.Text == "" {
 		return nil, []error{wg.ValidationError{Field: "Address", Message: "required"}}
 	}
@@ -515,7 +486,6 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 		cfg.Interface.Address = append(cfg.Interface.Address, *ipNet)
 	}
 
-	// Parse DNS
 	if f.dnsEntry.Text != "" {
 		for _, dns := range strings.Split(f.dnsEntry.Text, ",") {
 			dns = strings.TrimSpace(dns)
@@ -530,7 +500,6 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 		}
 	}
 
-	// Parse ListenPort
 	if f.listenPortEntry.Text != "" {
 		port, err := strconv.Atoi(f.listenPortEntry.Text)
 		if err != nil {
@@ -542,7 +511,6 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 		cfg.Interface.ListenPort = &port
 	}
 
-	// Parse and store Public Endpoint (optional)
 	if f.publicEndpointEntry.Text != "" {
 		if !wg.ValidateEndpoint(f.publicEndpointEntry.Text) {
 			return nil, []error{wg.ValidationError{Field: "PublicEndpoint", Message: "invalid format (host:port)"}}
@@ -550,7 +518,6 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 		cfg.PublicEndpoint = f.publicEndpointEntry.Text
 	}
 
-	// Parse MTU
 	if f.mtuEntry.Text != "" {
 		mtu, err := strconv.Atoi(f.mtuEntry.Text)
 		if err != nil {
@@ -559,16 +526,14 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 		cfg.Interface.MTU = mtu
 	}
 
-	// PostUp / PostDown
 	cfg.Interface.PostUp = strings.TrimSpace(f.postUpEntry.Text)
 	cfg.Interface.PostDown = strings.TrimSpace(f.postDownEntry.Text)
 
-	// Validate name for new tunnels
 	if !f.isEdit {
 		if !wg.ValidateName(f.nameEntry.Text) {
 			return nil, []error{wg.ValidationError{Field: "Name", Message: "must be 1-15 alphanumeric characters"}}
 		}
-		if wgController.ConfigExists(f.nameEntry.Text) {
+		if f.ctrl.ConfigExists(f.nameEntry.Text) {
 			return nil, []error{wg.ValidationError{Field: "Name", Message: "tunnel already exists"}}
 		}
 	}
