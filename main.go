@@ -15,7 +15,8 @@ import (
 
 func main() {
 	a := app.NewWithID("com.wireguard.manager")
-
+	//
+	meta := a.Metadata()
 	cfg := settings.Load(a.Preferences())
 
 	// Apply theme
@@ -46,13 +47,18 @@ func main() {
 
 	ctrl := wg.New(cfg.WGConfigPath)
 
-	w := a.NewWindow("wgAdmin")
+	version := "unknown"
+	if meta.Version != "" {
+		version = meta.Version
+	}
+
+	w := a.NewWindow(meta.Name + " - version: " + version)
 	w.Resize(fyne.NewSize(float32(cfg.WindowWidth), float32(cfg.WindowHeight)))
 	if cfg.StartFullscreen {
 		w.SetFullScreen(true)
 	}
 
-	mainView := ui.NewMainView(w, &ctrl, cfg).Build()
+	mainView := ui.NewMainView(w, &ctrl, cfg).Build(meta)
 	w.SetContent(mainView)
 	mainView.Refresh()
 

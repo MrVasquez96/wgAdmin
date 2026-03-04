@@ -1,7 +1,11 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -53,16 +57,19 @@ func NewMainView(window fyne.Window, ctrl *wg.WG, cfg *settings.AppSettings) *Ma
 }
 
 // Build creates the main view content
-func (v *MainView) Build() fyne.CanvasObject {
+func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 	// Title
-	title := canvas.NewText("wgAdmin", theme.Color(theme.ColorNameForeground))
+	title := canvas.NewText(meta.Name, theme.Color(theme.ColorNameForeground))
 	title.TextStyle = fyne.TextStyle{Bold: true}
 	title.TextSize = 24
 
+	// Import tunnel
+	importBtn := v.newImportButton()
 	// Add tunnel button
 	addBtn := widget.NewButtonWithIcon("Add Tunnel", theme.ContentAddIcon(), func() {
 		v.showAddTunnelForm()
 	})
+
 	addBtn.Importance = widget.HighImportance
 
 	// Filter
@@ -101,7 +108,7 @@ func (v *MainView) Build() fyne.CanvasObject {
 
 	// Header layout
 	leftHeader := container.NewHBox(title)
-	rightHeader := container.NewHBox(addBtn, filterContainer, v.autoRefresh, refreshBtn, settingsBtn)
+	rightHeader := container.NewHBox(importBtn, addBtn, filterContainer, v.autoRefresh, refreshBtn, settingsBtn)
 	header := container.NewBorder(nil, nil, leftHeader, rightHeader)
 
 	// Scrollable list
@@ -122,6 +129,72 @@ func (v *MainView) Build() fyne.CanvasObject {
 	)
 
 	return container.NewPadded(content)
+}
+func (v *MainView) newImportButton() *widget.Button {
+
+	return widget.NewButtonWithIcon("Import from file", theme.DocumentSaveIcon(), func() {
+		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil {
+				dialog.ShowError(err, v.window)
+				return
+			}
+			if reader == nil {
+				log.Println("Cancelled")
+				return
+			}
+			// 2. Handle the file content
+			defer reader.Close()
+			// data, _ := io.ReadAll(reader)
+			filePath := reader.URI().Path()
+			if filepath.Ext(filePath) != ".conf" {
+				dialog.ShowError(errors.New("Wireguard config must end with '.conf'"), v.window)
+				return
+			}
+			cfg, err := config.ParseConfig(filePath)
+			if err != nil {
+				dialog.ShowError(errors.New("invalid config\n"+err.Error()), v.window)
+				return
+			}
+			if err = cfg.Validate(); err != nil {
+				dialog.ShowInformation("Validation", "Failed to validate config!", v.window)
+			}
+			name := cfg.Name
+			if name == "Unknown" {
+				name = reader.URI().Name()
+				name = filepath.Base(name)
+			}
+			_, err = os.Stat(filepath.Join(v.settings.WGConfigPath, reader.URI().Name()))
+			save := true
+			if err != nil {
+				dialog.ShowConfirm("File exists", "File already exists. Overwrite?", func(b bool) {
+					if b {
+
+						v.save(name, cfg)
+					} else {
+
+						dialog.ShowInformation("Aborted", "Nothing saved", v.window)
+					}
+				}, v.window)
+
+				return
+			}
+			if save {
+				v.save(name, cfg)
+			} else {
+
+			}
+
+		}, v.window)
+		fileDialog.Show()
+	})
+}
+func (v *MainView) save(name string, cfg *config.Config) {
+	err := config.WriteConfig(v.settings.WGConfigPath, name, cfg)
+	if err != nil {
+		dialog.ShowError(errors.New("Error saving:\n"+err.Error()), v.window)
+		return
+	}
+	dialog.ShowInformation("Success", "Imported:"+name, v.window)
 }
 
 // Refresh reloads the interface list
