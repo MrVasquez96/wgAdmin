@@ -12,7 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/MrVasquez96/go-wg/wg/config"
 
-	customTheme "wgAdmin/internal/theme"
+	customTheme "wgAdmin/internal/ui/theme"
 )
 
 // InterfaceCardCallbacks holds callback functions for interface card actions

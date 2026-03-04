@@ -5,7 +5,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -70,7 +69,7 @@ func NewPeerForm(existing *config.PeerConfig, onSave func(config.PeerConfig, str
 		f.allowedIPsEntry.SetText(strings.Join(ips, ", "))
 
 		if existing.PersistentKeepalive > 0 {
-			f.persistentKeepaliveEntry.SetText(strconv.Itoa(int(existing.PersistentKeepalive.Seconds())))
+			f.persistentKeepaliveEntry.SetText(strconv.Itoa(existing.PersistentKeepalive))
 		}
 		if existing.PresharedKey != nil {
 			f.presharedKeyEntry.SetText(existing.PresharedKey.String())
@@ -216,7 +215,7 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 		if keepalive < 0 || keepalive > 65535 {
 			return peer, []error{wg.ValidationError{Field: "Peer.PersistentKeepalive", Message: "must be 0-65535"}}
 		}
-		peer.PersistentKeepalive = time.Duration(keepalive) * time.Second
+		peer.PersistentKeepalive = keepalive
 	}
 
 	if f.presharedKeyEntry.Text != "" {

@@ -23,10 +23,10 @@ import (
 
 // TunnelForm handles tunnel creation and editing
 type TunnelForm struct {
-	window         fyne.Window
-	ctrl           *wg.WG
-	isEdit         bool
-	name           string
+	window          fyne.Window
+	ctrl            *wg.WG
+	isEdit          bool
+	name            string
 	clientConfigDir string
 
 	// Interface fields
@@ -418,9 +418,8 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 			Name:                peer.Name,
 			PublicKey:           pubKeyStr,
 			AllowedIPs:          allowedIPs,
-			EndpointIP:          host,
-			EndpointPort:        port,
-			PersistentKeepalive: int(peer.PersistentKeepalive.Seconds()),
+			Endpoint:            fmt.Sprintf("%s:%d", host, port),
+			PersistentKeepalive: peer.PersistentKeepalive,
 		}
 
 		clientPath := filepath.Join(clientDir, peer.Name+".conf")
