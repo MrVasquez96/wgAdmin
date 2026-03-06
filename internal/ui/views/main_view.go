@@ -72,6 +72,11 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 
 	addBtn.Importance = widget.HighImportance
 
+	// Backups button
+	backupsBtn := widget.NewButtonWithIcon("Backups", theme.FolderOpenIcon(), func() {
+		v.showBackupsDialog()
+	})
+
 	// Filter
 	v.filterEntry.SetPlaceHolder("Filter by name...")
 	v.filterEntry.OnChanged = func(s string) {
@@ -108,7 +113,7 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 
 	// Header layout
 	leftHeader := container.NewHBox(title)
-	rightHeader := container.NewHBox(importBtn, addBtn, filterContainer, v.autoRefresh, refreshBtn, settingsBtn)
+	rightHeader := container.NewHBox(importBtn, addBtn, backupsBtn, filterContainer, v.autoRefresh, refreshBtn, settingsBtn)
 	header := container.NewBorder(nil, nil, leftHeader, rightHeader)
 
 	// Scrollable list
@@ -189,6 +194,9 @@ func (v *MainView) newImportButton() *widget.Button {
 	})
 }
 func (v *MainView) save(name string, cfg *config.Config) {
+	if strings.Contains(name, ".conf") {
+		name = strings.ReplaceAll(name, ".conf", "")
+	}
 	err := config.WriteConfig(v.settings.WGConfigPath, name, cfg)
 	if err != nil {
 		dialog.ShowError(errors.New("Error saving:\n"+err.Error()), v.window)
@@ -420,6 +428,13 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 		}
 		deleteFn()
 	}, v.window)
+}
+
+func (v *MainView) showBackupsDialog() {
+	bv := NewBackupView(v.window, v.ctrl, func() {
+		v.Refresh()
+	})
+	bv.Show()
 }
 
 func (v *MainView) findInterface(name string) *config.Interface {
