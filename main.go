@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"wgAdmin/fyneExtra/theme"
 	"wgAdmin/internal/settings"
-	"wgAdmin/internal/ui"
+	"wgAdmin/internal/ui/theme"
+	ui "wgAdmin/internal/ui/views"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
