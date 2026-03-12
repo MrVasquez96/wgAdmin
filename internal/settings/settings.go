@@ -16,6 +16,9 @@ const (
 	KeyScanWorkers         = "scan_workers"
 	KeyScanTimeoutSecs     = "scan_timeout_seconds"
 	KeyPrivilegeEscalation = "privilege_escalation"
+	KeyFontSize            = "font_size"
+	KeyAccentColor         = "accent_color"
+	KeyUseCustomFont       = "use_custom_font"
 )
 
 // Default values
@@ -32,6 +35,9 @@ const (
 	DefaultScanWorkers         = 100
 	DefaultScanTimeoutSecs     = 2
 	DefaultPrivilegeEscalation = "none"
+	DefaultFontSize            = "normal"
+	DefaultAccentColor         = "#1a73e8"
+	DefaultUseCustomFont       = true
 )
 
 // AppSettings holds all application settings.
@@ -48,6 +54,9 @@ type AppSettings struct {
 	ScanWorkers         int
 	ScanTimeoutSecs     int
 	PrivilegeEscalation string
+	FontSize            string
+	AccentColor         string
+	UseCustomFont       bool
 }
 
 // Load reads all settings from Fyne preferences, applying defaults for missing values.
@@ -65,6 +74,9 @@ func Load(prefs fyne.Preferences) *AppSettings {
 		ScanWorkers:         prefs.IntWithFallback(KeyScanWorkers, DefaultScanWorkers),
 		ScanTimeoutSecs:     prefs.IntWithFallback(KeyScanTimeoutSecs, DefaultScanTimeoutSecs),
 		PrivilegeEscalation: prefs.StringWithFallback(KeyPrivilegeEscalation, DefaultPrivilegeEscalation),
+		FontSize:            prefs.StringWithFallback(KeyFontSize, DefaultFontSize),
+		AccentColor:         prefs.StringWithFallback(KeyAccentColor, DefaultAccentColor),
+		UseCustomFont:       prefs.BoolWithFallback(KeyUseCustomFont, DefaultUseCustomFont),
 	}
 }
 
@@ -82,4 +94,7 @@ func (s *AppSettings) Save(prefs fyne.Preferences) {
 	prefs.SetInt(KeyScanWorkers, s.ScanWorkers)
 	prefs.SetInt(KeyScanTimeoutSecs, s.ScanTimeoutSecs)
 	prefs.SetString(KeyPrivilegeEscalation, s.PrivilegeEscalation)
+	prefs.SetString(KeyFontSize, s.FontSize)
+	prefs.SetString(KeyAccentColor, s.AccentColor)
+	prefs.SetBool(KeyUseCustomFont, s.UseCustomFont)
 }
