@@ -7,12 +7,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"wgAdmin/internal/network"
 	"wgAdmin/internal/ui/helpers"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+
+	scanner "github.com/MrVasquez96/go-ipscan"
 )
 
 // ScanView displays network scan results
@@ -27,7 +28,7 @@ type ScanView struct {
 func NewScanView(ifaceName, ip string, workers, timeoutSecs int) *ScanView {
 	return &ScanView{
 		ifaceName:   ifaceName,
-		cidr:        network.DeriveCIDR24(ip),
+		cidr:        scanner.DeriveCIDR24(ip),
 		workers:     workers,
 		timeoutSecs: timeoutSecs,
 	}
@@ -66,7 +67,7 @@ func (v *ScanView) Show() {
 
 	timeout := time.Duration(v.timeoutSecs) * time.Second
 	log.Println("[DEBUG] Initializing scanner...", v.cidr)
-	s, err := network.NewScanner(v.cidr, v.workers, timeout)
+	s, err := scanner.NewScanner(v.cidr, v.workers, timeout)
 	if err != nil {
 		log.Printf("[ERROR] Scanner initialization failed: %v", err)
 		helpers.ShowError(err, win)
@@ -120,7 +121,7 @@ func (v *ScanView) Show() {
 	}()
 }
 
-func makeScanRow(r network.ScanResult) fyne.CanvasObject {
+func makeScanRow(r scanner.ScanResult) fyne.CanvasObject {
 	host := ""
 	if len(r.Hostnames) > 0 {
 		host = r.Hostnames[0]
