@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"wgAdmin/internal/settings"
+	"wgAdmin/internal/ui/helpers"
 	wgtheme "wgAdmin/internal/ui/theme"
 	"wgAdmin/internal/wgwidget"
 
@@ -35,6 +36,8 @@ type MainView struct {
 	filterEntry   *widget.Entry
 	autoRefresh   *widget.Check
 	hint          *widget.RichText
+	headerTitle   *canvas.Text
+	headerBg      *canvas.Rectangle
 
 	interfaces  []config.Interface
 	stopAuto    chan struct{}
@@ -58,10 +61,12 @@ func NewMainView(window fyne.Window, ctrl *wg.WG, cfg *settings.AppSettings) *Ma
 
 // Build creates the main view content
 func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
-	// Title
-	title := canvas.NewText(meta.Name, theme.Color(theme.ColorNameForeground))
-	title.TextStyle = fyne.TextStyle{Bold: true}
-	title.TextSize = 24
+	// Title — use the custom theme so forced variant is respected
+	customT := wgtheme.NewWGAdminTheme(v.settings)
+	variant := wgtheme.CurrentVariant()
+	v.headerTitle = canvas.NewText(meta.Name, customT.Color(theme.ColorNameForeground, variant))
+	v.headerTitle.TextStyle = fyne.TextStyle{Bold: true}
+	v.headerTitle.TextSize = 28
 
 	// Import tunnel
 	importBtn := v.newImportButton()
@@ -111,10 +116,15 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 		v.autoRefresh.SetChecked(true)
 	}
 
-	// Header layout
-	leftHeader := container.NewHBox(title)
+	// Header layout with background
+	leftHeader := container.NewHBox(v.headerTitle)
 	rightHeader := container.NewHBox(importBtn, addBtn, backupsBtn, filterContainer, v.autoRefresh, refreshBtn, settingsBtn)
-	header := container.NewBorder(nil, nil, leftHeader, rightHeader)
+	headerContent := container.NewBorder(nil, nil, leftHeader, rightHeader)
+	v.headerBg = canvas.NewRectangle(customT.Color(theme.ColorNameHeaderBackground, variant))
+	header := container.NewVBox(
+		container.NewStack(v.headerBg, container.NewPadded(headerContent)),
+		widget.NewSeparator(),
+	)
 
 	// Scrollable list
 	scroll := container.NewVScroll(v.listContainer)
@@ -140,7 +150,7 @@ func (v *MainView) newImportButton() *widget.Button {
 	return widget.NewButtonWithIcon("Import from file", theme.DocumentSaveIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err != nil {
-				dialog.ShowError(err, v.window)
+				helpers.ShowError(err, v.window)
 				return
 			}
 			if reader == nil {
@@ -152,16 +162,16 @@ func (v *MainView) newImportButton() *widget.Button {
 			// data, _ := io.ReadAll(reader)
 			filePath := reader.URI().Path()
 			if filepath.Ext(filePath) != ".conf" {
-				dialog.ShowError(errors.New("Wireguard config must end with '.conf'"), v.window)
+				helpers.ShowError(errors.New("Wireguard config must end with '.conf'"), v.window)
 				return
 			}
 			cfg, err := config.ParseConfig(filePath)
 			if err != nil {
-				dialog.ShowError(errors.New("invalid config\n"+err.Error()), v.window)
+				helpers.ShowError(errors.New("invalid config\n"+err.Error()), v.window)
 				return
 			}
 			if err = cfg.Validate(); err != nil {
-				dialog.ShowInformation("Validation", "Failed to validate config!", v.window)
+				helpers.ShowInformation("Validation", "Failed to validate config!", v.window)
 			}
 			name := cfg.Name
 			if name == "Unknown" {
@@ -169,27 +179,21 @@ func (v *MainView) newImportButton() *widget.Button {
 				name = filepath.Base(name)
 			}
 			_, err = os.Stat(filepath.Join(v.settings.WGConfigPath, reader.URI().Name()))
-			save := true
-			if err != nil {
-				dialog.ShowConfirm("File exists", "File already exists. Overwrite?", func(b bool) {
-					if b {
 
+			if err == nil {
+				helpers.ShowConfirm("File exists", "File already exists. Overwrite?", func(b bool) {
+					if b {
 						v.save(name, cfg)
 					} else {
-
-						dialog.ShowInformation("Aborted", "Nothing saved", v.window)
+						helpers.ShowInformation("Aborted", "Nothing saved", v.window)
 					}
 				}, v.window)
-
 				return
 			}
-			if save {
-				v.save(name, cfg)
-			} else {
-
-			}
+			v.save(name, cfg)
 
 		}, v.window)
+		fileDialog.Resize(fyne.NewSize(800, 600))
 		fileDialog.Show()
 	})
 }
@@ -199,10 +203,10 @@ func (v *MainView) save(name string, cfg *config.Config) {
 	}
 	err := config.WriteConfig(v.settings.WGConfigPath, name, cfg)
 	if err != nil {
-		dialog.ShowError(errors.New("Error saving:\n"+err.Error()), v.window)
+		helpers.ShowError(errors.New("Error saving:\n"+err.Error()), v.window)
 		return
 	}
-	dialog.ShowInformation("Success", "Imported:"+name, v.window)
+	helpers.ShowInformation("Success", "Imported:"+name, v.window)
 }
 
 // Refresh reloads the interface list
@@ -243,7 +247,7 @@ func (v *MainView) rebuild() {
 				v.toggleInterface(name, activate)
 			},
 			OnScan: func(name, ip string) {
-				scanView := NewScanView(name, ip, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs)
+				scanView := NewScanViewWithProgress(name, ip, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs)
 				scanView.Show()
 			},
 			OnEdit: func(name string) {
@@ -323,7 +327,7 @@ func (v *MainView) showEditTunnelForm(name string) {
 	path := v.ctrl.GetConfigPath(name)
 	cfg, err := config.ParseConfig(path)
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
+		helpers.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
 		return
 	}
 
@@ -337,7 +341,7 @@ func (v *MainView) showEditPeersTunnelForm(name string) {
 	path := v.ctrl.GetConfigPath(name)
 	cfg, err := config.ParseConfig(path)
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
+		helpers.ShowError(fmt.Errorf("failed to load config: %w", err), v.window)
 		return
 	}
 
@@ -350,7 +354,7 @@ func (v *MainView) showEditPeersTunnelForm(name string) {
 func (v *MainView) preCheckActiveDialog(name string, cfg *config.Config) bool {
 	iface := v.findInterface(name)
 	if iface != nil && iface.Active {
-		dialog.ShowConfirm("Tunnel Active",
+		helpers.ShowConfirm("Tunnel Active",
 			fmt.Sprintf("Tunnel '%s' is currently active. It's recommended to deactivate before editing.\n\nContinue anyway?", name),
 			func(yes bool) {
 				if yes {
@@ -422,7 +426,7 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 		msg += "\n\nWarning: This tunnel is currently active and will be deactivated."
 	}
 
-	dialog.ShowConfirm("Delete Tunnel", msg, func(yes bool) {
+	helpers.ShowConfirm("Delete Tunnel", msg, func(yes bool) {
 		if !yes {
 			return
 		}
@@ -491,16 +495,17 @@ func (v *MainView) applySettings(updated *settings.AppSettings) {
 	v.hint.ParseMarkdown(
 		fmt.Sprintf("Configs: `%s` | Native WireGuard | Requires root privileges", updated.WGConfigPath))
 
-	// Apply theme variant
-	a := fyne.CurrentApp()
-	switch updated.ThemeVariant {
-	case "light":
-		a.Settings().SetTheme(wgtheme.NewWGAdminTheme())
-	case "dark":
-		a.Settings().SetTheme(wgtheme.NewWGAdminTheme())
-	default:
-		a.Settings().SetTheme(wgtheme.NewWGAdminTheme())
-	}
+	// Apply theme variant — the new theme reads ThemeVariant from settings
+	// and forces light/dark/system accordingly
+	newTheme := wgtheme.NewWGAdminTheme(v.settings)
+	fyne.CurrentApp().Settings().SetTheme(newTheme)
+
+	// Update header colors to match new theme variant
+	variant := wgtheme.CurrentVariant()
+	v.headerTitle.Color = newTheme.Color(theme.ColorNameForeground, variant)
+	v.headerTitle.Refresh()
+	v.headerBg.FillColor = newTheme.Color(theme.ColorNameHeaderBackground, variant)
+	v.headerBg.Refresh()
 
 	v.Refresh()
 }

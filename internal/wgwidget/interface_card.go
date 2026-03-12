@@ -46,12 +46,12 @@ func NewInterfaceCard(iface config.Interface, callbacks InterfaceCardCallbacks) 
 }
 
 func (c *InterfaceCard) buildCard() *fyne.Container {
-	variant := fyne.CurrentApp().Settings().ThemeVariant()
+	variant := customTheme.CurrentVariant()
 
 	// Title
 	title := canvas.NewText(c.iface.Name, theme.ForegroundColor())
 	title.TextStyle = fyne.TextStyle{Bold: true}
-	title.TextSize = 18
+	title.TextSize = 20
 
 	// Status badge
 	var statusColor color.Color
@@ -66,6 +66,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 
 	statusDot := canvas.NewCircle(statusColor)
 	statusLabel := widget.NewLabel(statusText)
+	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 	statusBadge := container.NewHBox(statusDot, statusLabel)
 
 	// IP address
@@ -174,12 +175,16 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		bgColor = customTheme.AppColors.CardBackground(variant)
 	}
 
+	// Shadow layer for depth
+	shadow := canvas.NewRectangle(customTheme.AppColors.CardElevation(variant))
+	shadow.CornerRadius = 12
+
 	bg := canvas.NewRectangle(bgColor)
 	bg.CornerRadius = 12
 	bg.StrokeColor = customTheme.AppColors.Border(variant)
 	bg.StrokeWidth = 1
 	padded := container.NewPadded(cardContent)
-	return container.NewStack(bg, padded)
+	return container.NewStack(shadow, bg, padded)
 }
 
 // CreateRenderer implements fyne.Widget

@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"wgAdmin/internal/ui/helpers"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -36,11 +37,11 @@ func NewBackupView(parent fyne.Window, ctrl *wg.WG, onRestore func()) *BackupVie
 // Show opens the backup/restore window
 func (bv *BackupView) Show() {
 	bv.win = fyne.CurrentApp().NewWindow("Backups")
-	bv.win.Resize(fyne.NewSize(600, 400))
+	bv.win.Resize(fyne.NewSize(700, 500))
 
 	// Clean old backups button
 	cleanBtn := widget.NewButtonWithIcon("Delete Backups Older Than 30 Days", theme.DeleteIcon(), func() {
-		dialog.ShowConfirm("Clean Old Backups",
+		helpers.ShowConfirm("Clean Old Backups",
 			"Delete all backup files older than 30 days?",
 			func(yes bool) {
 				if !yes {
@@ -48,10 +49,10 @@ func (bv *BackupView) Show() {
 				}
 				removed, err := bv.ctrl.CleanOldBackups(30 * 24 * time.Hour)
 				if err != nil {
-					dialog.ShowError(fmt.Errorf("cleanup failed: %w", err), bv.win)
+					helpers.ShowError(fmt.Errorf("cleanup failed: %w", err), bv.win)
 					return
 				}
-				dialog.ShowInformation("Cleanup Complete",
+				helpers.ShowInformation("Cleanup Complete",
 					fmt.Sprintf("Removed %d old backup(s).", removed), bv.win)
 				bv.refresh()
 			}, bv.win)
@@ -61,9 +62,9 @@ func (bv *BackupView) Show() {
 	header := container.NewHBox(cleanBtn)
 
 	scroll := container.NewVScroll(bv.listContainer)
-	scroll.SetMinSize(fyne.NewSize(580, 320))
+	scroll.SetMinSize(fyne.NewSize(660, 400))
 
-	content := container.NewBorder(header, nil, nil, nil, scroll)
+	content := container.NewBorder(container.NewPadded(header), nil, nil, nil, scroll)
 	bv.win.SetContent(container.NewPadded(content))
 
 	bv.refresh()
@@ -95,15 +96,15 @@ func (bv *BackupView) refresh() {
 		restoreBtn := widget.NewButtonWithIcon("Restore", theme.HistoryIcon(), func() {
 			msg := fmt.Sprintf("Restore '%s' from backup?\n\nThis will overwrite %s.conf if it exists.",
 				backup.Filename, backup.Name)
-			dialog.ShowConfirm("Restore Backup", msg, func(yes bool) {
+			helpers.ShowConfirm("Restore Backup", msg, func(yes bool) {
 				if !yes {
 					return
 				}
 				if err := bv.ctrl.RestoreBackup(backup.Filename); err != nil {
-					dialog.ShowError(fmt.Errorf("restore failed: %w", err), bv.win)
+					helpers.ShowError(fmt.Errorf("restore failed: %w", err), bv.win)
 					return
 				}
-				dialog.ShowInformation("Restored",
+				helpers.ShowInformation("Restored",
 					fmt.Sprintf("Successfully restored %s", backup.Name), bv.win)
 				if bv.onRestore != nil {
 					bv.onRestore()
@@ -112,10 +113,9 @@ func (bv *BackupView) refresh() {
 		})
 		restoreBtn.Importance = widget.HighImportance
 
-		row := container.NewBorder(nil, nil,
-			container.NewHBox(nameLabel, timeLabel),
-			restoreBtn,
-		)
-		bv.listContainer.Add(row)
+		infoBox := container.NewVBox(nameLabel, timeLabel)
+		row := container.NewBorder(nil, nil, infoBox, restoreBtn)
+		bv.listContainer.Add(container.NewPadded(row))
+		bv.listContainer.Add(widget.NewSeparator())
 	}
 }

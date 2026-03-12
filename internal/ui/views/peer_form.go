@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"wgAdmin/internal/ui/helpers"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -104,7 +106,7 @@ func (f *PeerForm) Show(parent fyne.Window) {
 	generateKeyBtn := widget.NewButtonWithIcon("Generate Keys", theme.ViewRefreshIcon(), func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
-			dialog.ShowError(err, parent)
+			helpers.ShowError(err, parent)
 			return
 		}
 		f.privateKeyEntry.SetText(priv)
@@ -151,7 +153,7 @@ func (f *PeerForm) Show(parent fyne.Window) {
 
 		peer, errs := f.validate()
 		if len(errs) > 0 {
-			dialog.ShowError(errs[0], parent)
+			helpers.ShowError(errs[0], parent)
 			return
 		}
 
@@ -160,7 +162,7 @@ func (f *PeerForm) Show(parent fyne.Window) {
 		}
 	}, parent)
 
-	d.Resize(fyne.NewSize(500, 600))
+	d.Resize(fyne.NewSize(600, 700))
 	d.Show()
 }
 

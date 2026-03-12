@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"wgAdmin/internal/ui/helpers"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -26,6 +27,7 @@ type TunnelForm struct {
 	window          fyne.Window
 	ctrl            *wg.WG
 	isEdit          bool
+	isPeer          bool
 	name            string
 	clientConfigDir string
 
@@ -58,7 +60,6 @@ func NewTunnelForm(parent fyne.Window, ctrl *wg.WG, existingName string, existin
 	if isEdit {
 		tunnelName = existingConfig.Name
 	}
-
 	f := &TunnelForm{
 		window:              parent,
 		ctrl:                ctrl,
@@ -165,12 +166,12 @@ func (f *TunnelForm) Show() {
 	}
 
 	win := fyne.CurrentApp().NewWindow(title)
-	win.Resize(fyne.NewSize(600, 700))
+	win.Resize(fyne.NewSize(700, 750))
 
 	generateKeyBtn := widget.NewButtonWithIcon("Generate Keys", theme.ViewRefreshIcon(), func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
-			dialog.ShowError(err, win)
+			helpers.ShowError(err, win)
 			return
 		}
 		f.privateKeyEntry.SetText(priv)
@@ -197,7 +198,7 @@ func (f *TunnelForm) Show() {
 		widget.NewFormItem("Public Key", pubKeyRow),
 		widget.NewFormItem("Address (CIDR)", f.addressEntry),
 		widget.NewFormItem("DNS", f.dnsEntry),
-		widget.NewFormItem("Listen Port", f.listenPortEntry),
+		//widget.NewFormItem("Listen Port", f.listenPortEntry),
 		widget.NewFormItem("Endpoint", f.publicEndpointEntry),
 		widget.NewFormItem("MTU", f.mtuEntry),
 		widget.NewFormItem("PostUp", f.postUpEntry),
@@ -207,14 +208,14 @@ func (f *TunnelForm) Show() {
 	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
-			dialog.ShowError(errs[0], win)
+			helpers.ShowError(errs[0], win)
 			return
 		}
 
 		name := f.getTunnelName()
 		if err := f.onSave(name, cfg); err != nil {
 			fmt.Println("error saving", err)
-			dialog.ShowError(err, win)
+			helpers.ShowError(err, win)
 			return
 		}
 		f.generateClientConfigs(name, cfg, win)
@@ -233,10 +234,10 @@ func (f *TunnelForm) Show() {
 
 	content := container.NewBorder(
 		nil,
-		buttons,
+		container.NewPadded(buttons),
 		nil, nil,
 		container.NewVScroll(container.NewVBox(
-			widget.NewCard("Interface Configuration", "", interfaceForm),
+			container.NewPadded(widget.NewCard("Interface Configuration", "", interfaceForm)),
 		)),
 	)
 
@@ -252,7 +253,7 @@ func (f *TunnelForm) ShowPeers() {
 	}
 
 	win := fyne.CurrentApp().NewWindow(title)
-	win.Resize(fyne.NewSize(600, 700))
+	win.Resize(fyne.NewSize(700, 750))
 
 	f.peersList = widget.NewList(
 		func() int { return len(f.peers) },
@@ -297,7 +298,7 @@ func (f *TunnelForm) ShowPeers() {
 			}
 
 			deleteBtn.OnTapped = func() {
-				dialog.ShowConfirm("Delete Peer", "Remove this peer?", func(yes bool) {
+				helpers.ShowConfirm("Delete Peer", "Remove this peer?", func(yes bool) {
 					if yes {
 						pubKey := f.peers[id].PublicKey.String()
 						delete(f.peerPrivateKeys, pubKey)
@@ -335,14 +336,14 @@ func (f *TunnelForm) ShowPeers() {
 	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
-			dialog.ShowError(errs[0], win)
+			helpers.ShowError(errs[0], win)
 			return
 		}
 
 		name := f.getTunnelName()
 		if err := f.onSave(name, cfg); err != nil {
 			fmt.Println("error saving", err)
-			dialog.ShowError(err, win)
+			helpers.ShowError(err, win)
 			return
 		}
 		f.generateClientConfigs(name, cfg, win)
@@ -361,10 +362,10 @@ func (f *TunnelForm) ShowPeers() {
 
 	content := container.NewBorder(
 		nil,
-		buttons,
+		container.NewPadded(buttons),
 		nil, nil,
 		container.NewVScroll(container.NewVBox(
-			widget.NewCard("Peers", "", peersSection),
+			container.NewPadded(widget.NewCard("Peers", "", peersSection)),
 		)),
 	)
 
@@ -378,7 +379,7 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 	}
 
 	if f.publicEndpointEntry.Text == "" {
-		dialog.ShowInformation("Client Configs",
+		helpers.ShowInformation("Client Configs",
 			"No public endpoint set - skipping client config generation.\nSet the Public Endpoint field to generate client configs.", win)
 		fmt.Println("Empty endpoint")
 		return
@@ -388,14 +389,14 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 	host, portStr, err := net.SplitHostPort(endpoint)
 	if err != nil {
 		fmt.Println("invalid endpoint")
-		dialog.ShowError(fmt.Errorf("invalid public endpoint for client configs: %w", err), win)
+		helpers.ShowError(fmt.Errorf("invalid public endpoint for client configs: %w", err), win)
 		return
 	}
 	port, _ := strconv.Atoi(portStr)
 
 	clientDir := filepath.Join(f.clientConfigDir, tunnelName)
 	if err := os.MkdirAll(clientDir, 0755); err != nil {
-		dialog.ShowError(fmt.Errorf("failed to create client config directory: %w", err), win)
+		helpers.ShowError(fmt.Errorf("failed to create client config directory: %w", err), win)
 		return
 	}
 
@@ -429,7 +430,7 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 		}
 		_, err = clientCtrl.NewClientConfig(*serverCfg, peerOpts, privKey, true)
 		if err != nil {
-			dialog.ShowError(fmt.Errorf("client config for '%s': %w", peer.Name, err), win)
+			helpers.ShowError(fmt.Errorf("client config for '%s': %w", peer.Name, err), win)
 			continue
 		}
 		generated = append(generated, clientPath)
@@ -438,11 +439,13 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 	if len(generated) > 0 {
 		absDir, _ := filepath.Abs(clientDir)
 		msg := fmt.Sprintf("Generated %d client config(s) in:\n%s", len(generated), absDir)
-		dialog.ShowInformation("Client Configs", msg, win)
+		helpers.ShowInformation("Client Configs", msg, win)
 	}
 }
 
 func (f *TunnelForm) validate() (*config.Config, []error) {
+	// Wee need to get the endpoint from main if applied there.
+
 	cfg := &config.Config{
 		Interface: config.InterfaceConfig{
 			MTU:   1420,
@@ -478,10 +481,13 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 				addr += "/32"
 			}
 		}
+
 		_, ipNet, err := net.ParseCIDR(addr)
 		if err != nil {
 			return nil, []error{wg.ValidationError{Field: "Address", Message: "invalid CIDR format"}}
 		}
+		fmt.Println("addr:", addr)
+		fmt.Println("IpNet:", ipNet)
 		cfg.Interface.Address = append(cfg.Interface.Address, *ipNet)
 	}
 
@@ -515,6 +521,11 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 			return nil, []error{wg.ValidationError{Field: "PublicEndpoint", Message: "invalid format (host:port)"}}
 		}
 		cfg.PublicEndpoint = f.publicEndpointEntry.Text
+		for i := range cfg.Peers {
+			if cfg.Peers[i].Endpoint == "" {
+				cfg.Peers[i].Endpoint = cfg.PublicEndpoint
+			}
+		}
 	}
 
 	if f.mtuEntry.Text != "" {

@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -24,7 +25,7 @@ func NewBusyDialog(window fyne.Window) *BusyDialog {
 }
 
 // Show displays the busy dialog with a message
-func (b *BusyDialog) Show(title,msg string) {
+func (b *BusyDialog) Show(title, msg string) {
 	fyne.Do(func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
@@ -33,11 +34,21 @@ func (b *BusyDialog) Show(title,msg string) {
 			b.dialog.Hide()
 		}
 
+		icon := widget.NewIcon(theme.InfoIcon())
 		spinner := widget.NewProgressBarInfinite()
 		label := widget.NewLabel(msg)
-		content := container.NewVBox(label, spinner)
+		label.Alignment = fyne.TextAlignCenter
+		label.Wrapping = fyne.TextWrapWord
+
+		content := container.NewVBox(
+			container.NewCenter(icon),
+			widget.NewSeparator(),
+			container.NewPadded(label),
+			container.NewPadded(spinner),
+		)
 
 		b.dialog = dialog.NewCustomWithoutButtons(title, content, b.window)
+		b.dialog.Resize(fyne.NewSize(400, 200))
 		b.dialog.Show()
 	})
 }
