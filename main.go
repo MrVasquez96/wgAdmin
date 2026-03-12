@@ -19,9 +19,9 @@ func main() {
 	meta := a.Metadata()
 	cfg := settings.Load(a.Preferences())
 
-	// Apply theme
-	a.Settings().SetTheme(theme.NewWGAdminTheme())
-	applyThemeVariant(a, cfg.ThemeVariant)
+	// Apply theme — NewWGAdminTheme reads cfg.ThemeVariant and forces
+	// light/dark variant accordingly (or follows system when "system")
+	a.Settings().SetTheme(theme.NewWGAdminTheme(cfg))
 
 	// Privilege escalation via pkexec (before creating any windows).
 	// We spawn a new root process and then quit this one gracefully.
@@ -69,13 +69,4 @@ func main() {
 	}
 
 	w.ShowAndRun()
-}
-
-func applyThemeVariant(a fyne.App, variant string) {
-	switch variant {
-	case "light":
-		os.Setenv("FYNE_THEME", "light")
-	case "dark":
-		os.Setenv("FYNE_THEME", "dark")
-	}
 }
