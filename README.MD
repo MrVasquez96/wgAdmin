@@ -4,12 +4,13 @@ A GUI application for managing WireGuard VPN configurations on Linux.
 
 ## Features
 
-- Create, edit, and delete WireGuard tunnels
-- Activate/deactivate interfaces with one click
+- Create, edit, import and delete WireGuard tunnels
+- Activate/deactivate interfaces
 - Generate key pairs and preshared keys
 - Manage multiple peers per tunnel
 - Network scanner for discovering hosts in a CIDR range
 - Auto-backup before deletion
+- Restore from backup config. 
 
 ## Requirements
 
@@ -18,23 +19,25 @@ A GUI application for managing WireGuard VPN configurations on Linux.
 - Root privileges
 
 ## Installation
-Either download the latest release from the releases [page](https://github.com/MrVasquez96/wgAdmin/releases) or build from source:
+
 ```bash
 git clone https://github.com/MrVasquez96/wgAdmin
 cd wgAdmin
-go build -o wgAdmin
-sudo ./wgAdmin
 ```
-
-## Usage
-
-Run with root privileges:
+### Building and running from source
 
 ```bash
-sudo ./wgAdmin
+make build
+sudo ./build/usr/local/bin/wgAdmin
 ```
 
-The application reads and writes configuration files from `/etc/wireguard/`.
+### Setup desktop app
+```bash
+make install
+```
+1. Checks if `build/.build_done` file exists. 
+2. Builds from source if missing and install destop app for linux.
+
 
 ## License
 
