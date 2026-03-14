@@ -23,10 +23,6 @@ A GUI application for managing WireGuard VPN configurations on Linux.
 ```bash
 git clone https://github.com/MrVasquez96/wgAdmin
 cd wgAdmin
-```
-### Installation 
-
-```bash
 make install
 ```
 1. Checks if `build/.build_done` file exists. 
