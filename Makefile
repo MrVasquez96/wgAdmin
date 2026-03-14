@@ -24,13 +24,19 @@ $(BUILD_DONE):
 	touch $(BUILD_DONE)
 
 install: $(BUILD_DONE)
-	@echo "Requirements met. Installing..."
+	@make uninstall
 	@if [ -f $(BUILD_DIR)/Makefile ]; then \
 		$(MAKE) -C $(BUILD_DIR) user-install; \
 	else \
 		echo "Error: No Makefile found in $(BUILD_DIR) to run install"; \
 		exit 1; \
 	fi
-
+uninstall: 
+	-rm -rf $(HOME)/.local/share/applications/wgAdmin.desktop
+	-rm -rf $(HOME)/.local/bin/wgAdmin
+	-rm -rf $(HOME)/.local/share/icons/$(Icon)
+	sudo rm -rf usr/share/applications/wgAdmin.desktop
+	sudo rm -rf usr/bin/wgAdmin
+	sudo rm -rf usr/share/pixmaps/wgAdmin.png
 clean:
 	rm -rf $(BUILD_DIR) $(TMP_DIR) *.tar.xz
