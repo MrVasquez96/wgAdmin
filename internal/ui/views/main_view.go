@@ -83,7 +83,7 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 	})
 
 	// Filter
-	v.filterEntry.SetPlaceHolder("Filter by name...")
+	v.filterEntry.SetPlaceHolder("Filter by string...")
 	v.filterEntry.OnChanged = func(s string) {
 		v.rebuild()
 	}
@@ -118,7 +118,7 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 
 	// Header layout with background
 	leftHeader := container.NewHBox(v.headerTitle)
-	rightHeader := container.NewHBox(importBtn, addBtn, backupsBtn, filterContainer, v.autoRefresh, refreshBtn, settingsBtn)
+	rightHeader := container.NewHBox(filterContainer, importBtn, addBtn, backupsBtn, v.autoRefresh, refreshBtn, settingsBtn)
 	headerContent := container.NewBorder(nil, nil, leftHeader, rightHeader)
 	v.headerBg = canvas.NewRectangle(customT.Color(theme.ColorNameHeaderBackground, variant))
 	header := container.NewVBox(
