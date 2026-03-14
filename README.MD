@@ -24,20 +24,15 @@ A GUI application for managing WireGuard VPN configurations on Linux.
 git clone https://github.com/MrVasquez96/wgAdmin
 cd wgAdmin
 ```
-### Building and running from source
+### Installation 
 
-```bash
-make build
-sudo ./build/usr/local/bin/wgAdmin
-```
-
-### Setup desktop app
 ```bash
 make install
 ```
 1. Checks if `build/.build_done` file exists. 
 2. Builds from source if missing and install destop app for linux.
-
+4. Kopies binary, destop file and logo/ocon to dedicated folders for desktop apps in linux. 
+3. The app should now be available in your desktop applications selection under `wgAdmin`.
 
 ## License
 
