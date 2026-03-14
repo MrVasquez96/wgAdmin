@@ -18,7 +18,13 @@ A GUI application for managing WireGuard VPN configurations on Linux.
 - Linux with wireguard module loaded
 - Root privileges
 
+__Building from source__
+- [Go](https://go.dev/doc/install) >= 1.24.5
+- [Fyne](fyne.io/fyne/v2) v2.7.0
+- [Make](https://man7.org/linux/man-pages/man1/make.1.html)
+
 ## Installation
+__Note:__ This is has only been tested with ubuntu based OS. Use `make build` and `./build/usr/local/bin/wgAdmin` if needed.
 
 ```bash
 git clone https://github.com/MrVasquez96/wgAdmin
