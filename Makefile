@@ -1,19 +1,36 @@
-# GOLANG Build Targets
+.PHONY: all build install
 
-WIN_ARCH ?= amd64
- # or 386
-BUILD_OS ?= LINUX
-.PHONY: all
-all: linux
+TMP_DIR     := ./tmp_build
+BUILD_DIR   := ./build
+BUILD_DONE  := $(BUILD_DIR)/.build_done
 
-.PHONY: dev
-dev:
-	go build -o ./bin/wgAdmin .
-	sudo ./bin/wgAdmin
+INSTALL_REQUIREMENTS := \
+    $(BUILD_DIR)/usr/local/bin/wgAdmin \
+    $(BUILD_DIR)/usr/local/share/applications/wgAdmin.desktop \
+    $(BUILD_DIR)/usr/local/share/pixmaps/wgAdmin.png
 
-.PHONY: linux 
-linux:
-	mkdir -p bin 
+all: build install
+
+build: $(BUILD_DONE)
+
+$(BUILD_DONE):
+	@echo "Starting build..."
+	mkdir -p $(BUILD_DIR) $(TMP_DIR)
 	~/go/bin/fyne release --target linux
-	tar -xvf wgAdmin.tar.xz -C bin/
+	tar -xvf wgAdmin.tar.xz -C $(TMP_DIR)/ 
+	rm -rf $(BUILD_DIR)/*
+	mv $(TMP_DIR)/wgAdmin/* $(BUILD_DIR)/
+	rm -rf $(TMP_DIR)
+	touch $(BUILD_DONE)
 
+install: $(BUILD_DONE)
+	@echo "Requirements met. Installing..."
+	@if [ -f $(BUILD_DIR)/Makefile ]; then \
+		$(MAKE) -C $(BUILD_DIR) user-install; \
+	else \
+		echo "Error: No Makefile found in $(BUILD_DIR) to run install"; \
+		exit 1; \
+	fi
+
+clean:
+	rm -rf $(BUILD_DIR) $(TMP_DIR) *.tar.xz
