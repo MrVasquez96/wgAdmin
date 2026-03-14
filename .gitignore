@@ -2,3 +2,6 @@
 # Build files and directories
 fyne-cross/*
 wgAdmin/*
+
+# Ignore build marker
+build/.build_done
