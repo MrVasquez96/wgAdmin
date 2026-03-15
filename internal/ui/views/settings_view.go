@@ -7,6 +7,7 @@ import (
 
 	"wgAdmin/internal/settings"
 	"wgAdmin/internal/ui/helpers"
+	"wgAdmin/internal/ui/lang"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -19,6 +20,7 @@ import (
 type SettingsView struct {
 	parent  fyne.Window
 	current *settings.AppSettings
+	lang    *lang.Language
 	onApply func(updated *settings.AppSettings)
 }
 
@@ -31,33 +33,34 @@ func (sv *SettingsView) createColorEntry(currentValue, placeholder string) *widg
 }
 
 // NewSettingsView creates a new settings view
-func NewSettingsView(parent fyne.Window, current *settings.AppSettings, onApply func(*settings.AppSettings)) *SettingsView {
+func NewSettingsView(parent fyne.Window, current *settings.AppSettings, onApply func(*settings.AppSettings), language *lang.Language) *SettingsView {
 	return &SettingsView{
 		parent:  parent,
 		current: current,
+		lang:    language,
 		onApply: onApply,
 	}
 }
 
 // Show displays the settings window
 func (sv *SettingsView) Show() {
-	win := fyne.CurrentApp().NewWindow("Settings")
+	win := fyne.CurrentApp().NewWindow(sv.lang.T("settings.title"))
 	win.Resize(fyne.NewSize(900, 900))
 
 	// --- Paths section ---
 	wgPathEntry := widget.NewEntry()
 	wgPathEntry.SetText(sv.current.WGConfigPath)
-	wgPathEntry.SetPlaceHolder("/etc/wireguard")
+	wgPathEntry.SetPlaceHolder(sv.lang.T("settings.placeholder_wg_path"))
 
 	clientDirEntry := widget.NewEntry()
 	clientDirEntry.SetText(sv.current.ClientConfigDir)
-	clientDirEntry.SetPlaceHolder("clients")
+	clientDirEntry.SetPlaceHolder(sv.lang.T("settings.placeholder_client_dir"))
 
 	pathsForm := widget.NewForm(
-		widget.NewFormItem("WireGuard Config Path", wgPathEntry),
-		widget.NewFormItem("Client Config Directory", clientDirEntry),
+		widget.NewFormItem(sv.lang.T("settings.label_wg_path"), wgPathEntry),
+		widget.NewFormItem(sv.lang.T("settings.label_client_dir"), clientDirEntry),
 	)
-	pathsCard := widget.NewCard("Paths", "Directories for configuration files", pathsForm)
+	pathsCard := widget.NewCard(sv.lang.T("settings.card_paths"), sv.lang.T("settings.card_paths_desc"), pathsForm)
 
 	// --- Window section ---
 	widthEntry := widget.NewEntry()
@@ -66,39 +69,52 @@ func (sv *SettingsView) Show() {
 	heightEntry := widget.NewEntry()
 	heightEntry.SetText(strconv.Itoa(sv.current.WindowHeight))
 
-	fullscreenCheck := widget.NewCheck("Start in fullscreen mode", nil)
+	fullscreenCheck := widget.NewCheck(sv.lang.T("settings.check_fullscreen"), nil)
 	fullscreenCheck.Checked = sv.current.StartFullscreen
 
 	windowForm := widget.NewForm(
-		widget.NewFormItem("Width", widthEntry),
-		widget.NewFormItem("Height", heightEntry),
+		widget.NewFormItem(sv.lang.T("settings.label_width"), widthEntry),
+		widget.NewFormItem(sv.lang.T("settings.label_height"), heightEntry),
 		widget.NewFormItem("", fullscreenCheck),
 	)
-	windowNote := widget.NewLabel("Window size changes take effect on next launch.")
+	windowNote := widget.NewLabel(sv.lang.T("settings.window_note"))
 	windowNote.TextStyle = fyne.TextStyle{Italic: true}
-	windowCard := widget.NewCard("Window", "Default window dimensions",
+	windowCard := widget.NewCard(sv.lang.T("settings.card_window"), sv.lang.T("settings.card_window_desc"),
 		container.NewVBox(windowForm, windowNote))
 
 	// --- Behavior section ---
-	autoRefreshCheck := widget.NewCheck("Enable auto-refresh on startup", nil)
+	autoRefreshCheck := widget.NewCheck(sv.lang.T("settings.check_auto_refresh"), nil)
 	autoRefreshCheck.Checked = sv.current.AutoRefreshEnabled
 
 	refreshSecsEntry := widget.NewEntry()
 	refreshSecsEntry.SetText(strconv.Itoa(sv.current.AutoRefreshSecs))
 
-	confirmDeleteCheck := widget.NewCheck("Confirm before deleting tunnels", nil)
+	confirmDeleteCheck := widget.NewCheck(sv.lang.T("settings.check_confirm_delete"), nil)
 	confirmDeleteCheck.Checked = sv.current.ConfirmBeforeDelete
 
 	themeSelect := widget.NewSelect([]string{"system", "light", "dark"}, nil)
 	themeSelect.SetSelected(sv.current.ThemeVariant)
 
+	// Language selector
+	langOptions := make([]string, 0, len(lang.AvailableLanguages))
+	langCodeToDisplay := make(map[string]string)
+	langDisplayToCode := make(map[string]string)
+	for code, display := range lang.AvailableLanguages {
+		langOptions = append(langOptions, display)
+		langCodeToDisplay[code] = display
+		langDisplayToCode[display] = code
+	}
+	langSelect := widget.NewSelect(langOptions, nil)
+	langSelect.SetSelected(langCodeToDisplay[sv.current.Language])
+
 	behaviorForm := widget.NewForm(
-		widget.NewFormItem("Theme", themeSelect),
+		widget.NewFormItem(sv.lang.T("settings.label_theme"), themeSelect),
+		widget.NewFormItem(sv.lang.T("settings.label_language"), langSelect),
 		widget.NewFormItem("", autoRefreshCheck),
-		widget.NewFormItem("Refresh Interval (s)", refreshSecsEntry),
+		widget.NewFormItem(sv.lang.T("settings.label_refresh_interval"), refreshSecsEntry),
 		widget.NewFormItem("", confirmDeleteCheck),
 	)
-	behaviorCard := widget.NewCard("Behavior", "", behaviorForm)
+	behaviorCard := widget.NewCard(sv.lang.T("settings.card_behavior"), "", behaviorForm)
 
 	// --- Scanner section ---
 	workersEntry := widget.NewEntry()
@@ -108,33 +124,30 @@ func (sv *SettingsView) Show() {
 	scanTimeoutEntry.SetText(strconv.Itoa(sv.current.ScanTimeoutSecs))
 
 	scanForm := widget.NewForm(
-		widget.NewFormItem("Concurrent Workers", workersEntry),
-		widget.NewFormItem("Timeout (seconds)", scanTimeoutEntry),
+		widget.NewFormItem(sv.lang.T("settings.label_workers"), workersEntry),
+		widget.NewFormItem(sv.lang.T("settings.label_timeout"), scanTimeoutEntry),
 	)
-	scanCard := widget.NewCard("Network Scanner", "", scanForm)
+	scanCard := widget.NewCard(sv.lang.T("settings.card_scanner"), "", scanForm)
 
 	// --- Privilege escalation section ---
 	privOptions := []string{"none", "pkexec", "sudo"}
+	pkexecNotInstalled := sv.lang.T("settings.pkexec_not_installed")
 	if !settings.PkexecAvailable() {
-		privOptions = []string{"none", "pkexec (not installed)", "sudo"}
+		privOptions = []string{"none", pkexecNotInstalled, "sudo"}
 	}
 	privSelect := widget.NewSelect(privOptions, nil)
 	privSelected := sv.current.PrivilegeEscalation
 	if !settings.PkexecAvailable() && privSelected == "pkexec" {
-		privSelected = "pkexec (not installed)"
+		privSelected = pkexecNotInstalled
 	}
 	privSelect.SetSelected(privSelected)
 
-	privNote := widget.NewRichTextFromMarkdown(
-		"**none**: Run as current user (may lack permissions)\n\n" +
-			"**pkexec**: Uses Polkit graphical prompt at startup\n\n" +
-			"**sudo**: Prompts for password in-app at startup\n\n" +
-			"_Changes take effect on next launch._")
+	privNote := widget.NewRichTextFromMarkdown(sv.lang.T("settings.priv_note"))
 	privNote.Wrapping = fyne.TextWrapWord
 
-	privCard := widget.NewCard("Privilege Escalation", "How to obtain root for WireGuard commands",
+	privCard := widget.NewCard(sv.lang.T("settings.card_privilege"), sv.lang.T("settings.card_privilege_desc"),
 		container.NewVBox(
-			widget.NewForm(widget.NewFormItem("Method", privSelect)),
+			widget.NewForm(widget.NewFormItem(sv.lang.T("settings.label_method"), privSelect)),
 			privNote,
 		),
 	)
@@ -143,10 +156,10 @@ func (sv *SettingsView) Show() {
 	fontSizeSelect := widget.NewSelect([]string{"small", "normal", "large"}, nil)
 	fontSizeSelect.SetSelected(sv.current.FontSize)
 
-	useCustomFontCheck := widget.NewCheck("Use Inter font (disable for system default)", nil)
+	useCustomFontCheck := widget.NewCheck(sv.lang.T("settings.check_custom_font"), nil)
 	useCustomFontCheck.Checked = sv.current.UseCustomFont
 
-	appearanceNote := widget.NewLabel("Font and color changes take effect on next launch.")
+	appearanceNote := widget.NewLabel(sv.lang.T("settings.appearance_note"))
 	appearanceNote.TextStyle = fyne.TextStyle{Italic: true}
 
 	// Light Mode Colors
@@ -171,25 +184,25 @@ func (sv *SettingsView) Show() {
 	lightScrollbarEntry := sv.createColorEntry(sv.current.LightScrollbarColor, settings.DefaultLightScrollbarColor)
 
 	lightColorsForm := widget.NewForm(
-		widget.NewFormItem("Accent Color", lightAccentEntry),
-		widget.NewFormItem("Background", lightBackgroundEntry),
-		widget.NewFormItem("Surface/Card", lightSurfaceEntry),
-		widget.NewFormItem("Text Primary", lightTextPrimaryEntry),
-		widget.NewFormItem("Text Secondary", lightTextSecondaryEntry),
-		widget.NewFormItem("Text Disabled", lightTextDisabledEntry),
-		widget.NewFormItem("Border", lightBorderEntry),
-		widget.NewFormItem("Success", lightSuccessEntry),
-		widget.NewFormItem("Error", lightErrorEntry),
-		widget.NewFormItem("Warning", lightWarningEntry),
-		widget.NewFormItem("Info", lightInfoEntry),
-		widget.NewFormItem("Input Background", lightInputBgEntry),
-		widget.NewFormItem("Input Border", lightInputBorderEntry),
-		widget.NewFormItem("Hover", lightHoverEntry),
-		widget.NewFormItem("Pressed", lightPressedEntry),
-		widget.NewFormItem("Selection", lightSelectionEntry),
-		widget.NewFormItem("Header Background", lightHeaderBgEntry),
-		widget.NewFormItem("Menu Background", lightMenuBgEntry),
-		widget.NewFormItem("Scrollbar", lightScrollbarEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_accent"), lightAccentEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_background"), lightBackgroundEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_surface"), lightSurfaceEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_text_primary"), lightTextPrimaryEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_text_secondary"), lightTextSecondaryEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_text_disabled"), lightTextDisabledEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_border"), lightBorderEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_success"), lightSuccessEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_error"), lightErrorEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_warning"), lightWarningEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_info"), lightInfoEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_input_bg"), lightInputBgEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_input_border"), lightInputBorderEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_hover"), lightHoverEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_pressed"), lightPressedEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_selection"), lightSelectionEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_header_bg"), lightHeaderBgEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_menu_bg"), lightMenuBgEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_scrollbar"), lightScrollbarEntry),
 	)
 
 	// Dark Mode Colors
@@ -214,56 +227,56 @@ func (sv *SettingsView) Show() {
 	darkScrollbarEntry := sv.createColorEntry(sv.current.DarkScrollbarColor, settings.DefaultDarkScrollbarColor)
 
 	darkColorsForm := widget.NewForm(
-		widget.NewFormItem("Accent Color", darkAccentEntry),
-		widget.NewFormItem("Background", darkBackgroundEntry),
-		widget.NewFormItem("Surface/Card", darkSurfaceEntry),
-		widget.NewFormItem("Text Primary", darkTextPrimaryEntry),
-		widget.NewFormItem("Text Secondary", darkTextSecondaryEntry),
-		widget.NewFormItem("Text Disabled", darkTextDisabledEntry),
-		widget.NewFormItem("Border", darkBorderEntry),
-		widget.NewFormItem("Success", darkSuccessEntry),
-		widget.NewFormItem("Error", darkErrorEntry),
-		widget.NewFormItem("Warning", darkWarningEntry),
-		widget.NewFormItem("Info", darkInfoEntry),
-		widget.NewFormItem("Input Background", darkInputBgEntry),
-		widget.NewFormItem("Input Border", darkInputBorderEntry),
-		widget.NewFormItem("Hover", darkHoverEntry),
-		widget.NewFormItem("Pressed", darkPressedEntry),
-		widget.NewFormItem("Selection", darkSelectionEntry),
-		widget.NewFormItem("Header Background", darkHeaderBgEntry),
-		widget.NewFormItem("Menu Background", darkMenuBgEntry),
-		widget.NewFormItem("Scrollbar", darkScrollbarEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_accent"), darkAccentEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_background"), darkBackgroundEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_surface"), darkSurfaceEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_text_primary"), darkTextPrimaryEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_text_secondary"), darkTextSecondaryEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_text_disabled"), darkTextDisabledEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_border"), darkBorderEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_success"), darkSuccessEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_error"), darkErrorEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_warning"), darkWarningEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_info"), darkInfoEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_input_bg"), darkInputBgEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_input_border"), darkInputBorderEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_hover"), darkHoverEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_pressed"), darkPressedEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_selection"), darkSelectionEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_header_bg"), darkHeaderBgEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_menu_bg"), darkMenuBgEntry),
+		widget.NewFormItem(sv.lang.T("settings.color_scrollbar"), darkScrollbarEntry),
 	)
 
 	// Create accordion for color settings with better sizing
 	lightColorContainer := container.NewVBox(
-		widget.NewLabel("Customize all light mode colors (hex format: #RRGGBB)"),
+		widget.NewLabel(sv.lang.T("settings.light_colors_desc")),
 		lightColorsForm,
 	)
 	darkColorContainer := container.NewVBox(
-		widget.NewLabel("Customize all dark mode colors (hex format: #RRGGBB)"),
+		widget.NewLabel(sv.lang.T("settings.dark_colors_desc")),
 		darkColorsForm,
 	)
 
 	colorAccordion := widget.NewAccordion(
-		widget.NewAccordionItem("Light Mode Colors", lightColorContainer),
-		widget.NewAccordionItem("Dark Mode Colors", darkColorContainer),
+		widget.NewAccordionItem(sv.lang.T("settings.accordion_light"), lightColorContainer),
+		widget.NewAccordionItem(sv.lang.T("settings.accordion_dark"), darkColorContainer),
 	)
 
 	appearanceForm := widget.NewForm(
-		widget.NewFormItem("Font Size", fontSizeSelect),
+		widget.NewFormItem(sv.lang.T("settings.label_font_size"), fontSizeSelect),
 		widget.NewFormItem("", useCustomFontCheck),
 	)
 
-	appearanceCard := widget.NewCard("Appearance", "Customize fonts and colors",
+	appearanceCard := widget.NewCard(sv.lang.T("settings.card_appearance"), sv.lang.T("settings.card_appearance_desc"),
 		container.NewVBox(appearanceForm, colorAccordion, appearanceNote))
 
 	// --- Buttons ---
-	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+	saveBtn := widget.NewButtonWithIcon(sv.lang.T("common.save"), theme.DocumentSaveIcon(), func() {
 		updated, err := sv.validate(
 			wgPathEntry, clientDirEntry,
 			widthEntry, heightEntry, fullscreenCheck,
-			autoRefreshCheck, refreshSecsEntry, confirmDeleteCheck, themeSelect,
+			autoRefreshCheck, refreshSecsEntry, confirmDeleteCheck, themeSelect, langSelect,
 			workersEntry, scanTimeoutEntry,
 			privSelect,
 			fontSizeSelect, useCustomFontCheck,
@@ -292,8 +305,8 @@ func (sv *SettingsView) Show() {
 	})
 	saveBtn.Importance = widget.HighImportance
 
-	resetBtn := widget.NewButtonWithIcon("Reset to Defaults", theme.ViewRefreshIcon(), func() {
-		helpers.ShowConfirm("Reset Settings", "Restore all settings to their default values?", func(yes bool) {
+	resetBtn := widget.NewButtonWithIcon(sv.lang.T("settings.btn_reset"), theme.ViewRefreshIcon(), func() {
+		helpers.ShowConfirm(sv.lang.T("settings.reset_title"), sv.lang.T("settings.reset_msg"), func(yes bool) {
 			if !yes {
 				return
 			}
@@ -306,6 +319,7 @@ func (sv *SettingsView) Show() {
 			refreshSecsEntry.SetText(strconv.Itoa(settings.DefaultAutoRefreshSecs))
 			confirmDeleteCheck.SetChecked(settings.DefaultConfirmBeforeDelete)
 			themeSelect.SetSelected(settings.DefaultThemeVariant)
+			langSelect.SetSelected(langCodeToDisplay[settings.DefaultLanguage])
 			workersEntry.SetText(strconv.Itoa(settings.DefaultScanWorkers))
 			scanTimeoutEntry.SetText(strconv.Itoa(settings.DefaultScanTimeoutSecs))
 			privSelect.SetSelected(settings.DefaultPrivilegeEscalation)
@@ -356,7 +370,7 @@ func (sv *SettingsView) Show() {
 		}, win)
 	})
 
-	cancelBtn := widget.NewButton("Cancel", func() { win.Close() })
+	cancelBtn := widget.NewButton(sv.lang.T("common.cancel"), func() { win.Close() })
 
 	buttons := container.NewHBox(resetBtn, layout.NewSpacer(), cancelBtn, saveBtn)
 
@@ -379,7 +393,7 @@ func (sv *SettingsView) Show() {
 func (sv *SettingsView) validate(
 	wgPathEntry, clientDirEntry *widget.Entry,
 	widthEntry, heightEntry *widget.Entry, fullscreenCheck *widget.Check,
-	autoRefreshCheck *widget.Check, refreshSecsEntry *widget.Entry, confirmDeleteCheck *widget.Check, themeSelect *widget.Select,
+	autoRefreshCheck *widget.Check, refreshSecsEntry *widget.Entry, confirmDeleteCheck *widget.Check, themeSelect, langSelect *widget.Select,
 	workersEntry, scanTimeoutEntry *widget.Entry,
 	privSelect *widget.Select,
 	fontSizeSelect *widget.Select, useCustomFontCheck *widget.Check,
@@ -397,34 +411,34 @@ func (sv *SettingsView) validate(
 	darkSelectionEntry, darkHeaderBgEntry, darkMenuBgEntry, darkScrollbarEntry *widget.Entry,
 ) (*settings.AppSettings, error) {
 	if wgPathEntry.Text == "" {
-		return nil, fmt.Errorf("WireGuard config path cannot be empty")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_wg_path_empty"))
 	}
 	if clientDirEntry.Text == "" {
-		return nil, fmt.Errorf("client config directory cannot be empty")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_client_dir_empty"))
 	}
 
 	width, err := strconv.Atoi(widthEntry.Text)
 	if err != nil || width < 400 {
-		return nil, fmt.Errorf("window width must be a number >= 400")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_width"))
 	}
 	height, err := strconv.Atoi(heightEntry.Text)
 	if err != nil || height < 300 {
-		return nil, fmt.Errorf("window height must be a number >= 300")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_height"))
 	}
 
 	refreshSecs, err := strconv.Atoi(refreshSecsEntry.Text)
 	if err != nil || refreshSecs < 1 {
-		return nil, fmt.Errorf("refresh interval must be a number >= 1")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_refresh_interval"))
 	}
 
 	workers, err := strconv.Atoi(workersEntry.Text)
 	if err != nil || workers < 1 {
-		return nil, fmt.Errorf("scan workers must be a number >= 1")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_workers"))
 	}
 
 	scanTimeout, err := strconv.Atoi(scanTimeoutEntry.Text)
 	if err != nil || scanTimeout < 1 {
-		return nil, fmt.Errorf("scan timeout must be a number >= 1")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_scan_timeout"))
 	}
 
 	privMethod := privSelect.Selected
@@ -432,17 +446,29 @@ func (sv *SettingsView) validate(
 		privMethod = "pkexec"
 	}
 	if privMethod != "none" && privMethod != "pkexec" && privMethod != "sudo" {
-		return nil, fmt.Errorf("invalid privilege escalation method")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_priv_method"))
 	}
 
 	themeVariant := themeSelect.Selected
 	if themeVariant != "system" && themeVariant != "light" && themeVariant != "dark" {
-		return nil, fmt.Errorf("invalid theme variant")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_theme"))
 	}
 
 	fontSize := fontSizeSelect.Selected
 	if fontSize != "small" && fontSize != "normal" && fontSize != "large" {
-		return nil, fmt.Errorf("invalid font size")
+		return nil, fmt.Errorf(sv.lang.T("settings.error_font_size"))
+	}
+
+	// Convert language display name back to code
+	langCode := ""
+	for code, display := range lang.AvailableLanguages {
+		if display == langSelect.Selected {
+			langCode = code
+			break
+		}
+	}
+	if langCode == "" {
+		langCode = settings.DefaultLanguage
 	}
 
 	// Validate all color entries
@@ -489,7 +515,7 @@ func (sv *SettingsView) validate(
 
 	for name, entry := range colorEntries {
 		if entry.Text != "" && !isValidHexColor(entry.Text) {
-			return nil, fmt.Errorf("%s must be a valid hex color (e.g. #1a73e8 or 1a73e8)", name)
+			return nil, fmt.Errorf(sv.lang.Tf("settings.error_invalid_color", name))
 		}
 	}
 
@@ -507,6 +533,7 @@ func (sv *SettingsView) validate(
 		ScanTimeoutSecs:     scanTimeout,
 		PrivilegeEscalation: privMethod,
 		FontSize:            fontSize,
+		Language:            langCode,
 		AccentColor:         lightAccentEntry.Text, // Keep for backward compatibility
 		UseCustomFont:       useCustomFontCheck.Checked,
 

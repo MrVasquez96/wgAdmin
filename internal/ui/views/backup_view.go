@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"wgAdmin/internal/ui/helpers"
+	"wgAdmin/internal/ui/lang"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -18,6 +19,7 @@ import (
 type BackupView struct {
 	window    fyne.Window
 	ctrl      *wg.WG
+	lang      *lang.Language
 	onRestore func()
 
 	win           fyne.Window
@@ -25,10 +27,11 @@ type BackupView struct {
 }
 
 // NewBackupView creates a new backup/restore view
-func NewBackupView(parent fyne.Window, ctrl *wg.WG, onRestore func()) *BackupView {
+func NewBackupView(parent fyne.Window, ctrl *wg.WG, onRestore func(), language *lang.Language) *BackupView {
 	return &BackupView{
 		window:        parent,
 		ctrl:          ctrl,
+		lang:          language,
 		onRestore:     onRestore,
 		listContainer: container.NewVBox(),
 	}
@@ -36,24 +39,24 @@ func NewBackupView(parent fyne.Window, ctrl *wg.WG, onRestore func()) *BackupVie
 
 // Show opens the backup/restore window
 func (bv *BackupView) Show() {
-	bv.win = fyne.CurrentApp().NewWindow("Backups")
+	bv.win = fyne.CurrentApp().NewWindow(bv.lang.T("backup.title"))
 	bv.win.Resize(fyne.NewSize(700, 500))
 
 	// Clean old backups button
-	cleanBtn := widget.NewButtonWithIcon("Delete Backups Older Than 30 Days", theme.DeleteIcon(), func() {
-		helpers.ShowConfirm("Clean Old Backups",
-			"Delete all backup files older than 30 days?",
+	cleanBtn := widget.NewButtonWithIcon(bv.lang.T("backup.btn_clean_old"), theme.DeleteIcon(), func() {
+		helpers.ShowConfirm(bv.lang.T("backup.clean_confirm_title"),
+			bv.lang.T("backup.clean_confirm_msg"),
 			func(yes bool) {
 				if !yes {
 					return
 				}
 				removed, err := bv.ctrl.CleanOldBackups(30 * 24 * time.Hour)
 				if err != nil {
-					helpers.ShowError(fmt.Errorf("cleanup failed: %w", err), bv.win)
+					helpers.ShowError(fmt.Errorf(bv.lang.T("backup.error_cleanup"), err), bv.win)
 					return
 				}
-				helpers.ShowInformation("Cleanup Complete",
-					fmt.Sprintf("Removed %d old backup(s).", removed), bv.win)
+				helpers.ShowInformation(bv.lang.T("backup.clean_success_title"),
+					bv.lang.Tf("backup.clean_success_msg", removed), bv.win)
 				bv.refresh()
 			}, bv.win)
 	})
@@ -76,12 +79,12 @@ func (bv *BackupView) refresh() {
 
 	backups, err := bv.ctrl.ListBackups()
 	if err != nil {
-		bv.listContainer.Add(widget.NewLabel(fmt.Sprintf("Error loading backups: %v", err)))
+		bv.listContainer.Add(widget.NewLabel(bv.lang.Tf("backup.error_loading", err)))
 		return
 	}
 
 	if len(backups) == 0 {
-		bv.listContainer.Add(widget.NewLabel("No backups found."))
+		bv.listContainer.Add(widget.NewLabel(bv.lang.T("backup.no_backups")))
 		return
 	}
 
@@ -93,19 +96,18 @@ func (bv *BackupView) refresh() {
 
 		timeLabel := widget.NewLabel(backup.Timestamp.Format("2006-01-02 15:04:05"))
 
-		restoreBtn := widget.NewButtonWithIcon("Restore", theme.HistoryIcon(), func() {
-			msg := fmt.Sprintf("Restore '%s' from backup?\n\nThis will overwrite %s.conf if it exists.",
-				backup.Filename, backup.Name)
-			helpers.ShowConfirm("Restore Backup", msg, func(yes bool) {
+		restoreBtn := widget.NewButtonWithIcon(bv.lang.T("common.restore"), theme.HistoryIcon(), func() {
+			msg := bv.lang.Tf("backup.restore_confirm_msg", backup.Filename, backup.Name)
+			helpers.ShowConfirm(bv.lang.T("backup.restore_confirm_title"), msg, func(yes bool) {
 				if !yes {
 					return
 				}
 				if err := bv.ctrl.RestoreBackup(backup.Filename); err != nil {
-					helpers.ShowError(fmt.Errorf("restore failed: %w", err), bv.win)
+					helpers.ShowError(fmt.Errorf(bv.lang.T("backup.error_restore"), err), bv.win)
 					return
 				}
-				helpers.ShowInformation("Restored",
-					fmt.Sprintf("Successfully restored %s", backup.Name), bv.win)
+				helpers.ShowInformation(bv.lang.T("backup.restore_success_title"),
+					bv.lang.Tf("backup.restore_success_msg", backup.Name), bv.win)
 				if bv.onRestore != nil {
 					bv.onRestore()
 				}

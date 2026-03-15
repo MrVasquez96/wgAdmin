@@ -1,13 +1,12 @@
 package ui
 
 import (
-	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 	"wgAdmin/internal/ui/helpers"
+	"wgAdmin/internal/ui/lang"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -22,27 +21,26 @@ type ScanView struct {
 	cidr        string
 	workers     int
 	timeoutSecs int
+	lang        *lang.Language
 }
 
 // NewScanView creates a new scan view
-func NewScanView(ifaceName, ip string, workers, timeoutSecs int) *ScanView {
+func NewScanView(ifaceName, ip string, workers, timeoutSecs int, language *lang.Language) *ScanView {
 	return &ScanView{
 		ifaceName:   ifaceName,
 		cidr:        scanner.DeriveCIDR24(ip),
 		workers:     workers,
 		timeoutSecs: timeoutSecs,
+		lang:        language,
 	}
 }
 
 func (v *ScanView) Show() {
-	log.Printf("[DEBUG] Show() called with CIDR: %s, Interface: %s", v.cidr, v.ifaceName)
-
 	if v.cidr == "" {
-		log.Println("[WARN] Scan abort: CIDR is empty")
 		return
 	}
 
-	win := fyne.CurrentApp().NewWindow("Scan: " + v.ifaceName)
+	win := fyne.CurrentApp().NewWindow(v.lang.Tf("scan.title", v.ifaceName))
 	win.Resize(fyne.NewSize(850, 600))
 
 	progress := widget.NewProgressBar()
@@ -55,10 +53,10 @@ func (v *ScanView) Show() {
 
 	header := container.NewVBox(
 		container.NewHBox(
-			widget.NewLabel("Scanning Network:"),
+			widget.NewLabel(v.lang.T("scan.label_scanning")),
 			cidrLabel,
 		),
-		container.NewPadded(container.NewBorder(nil, nil, widget.NewLabel("Progress:"), progressNote, progress)),
+		container.NewPadded(container.NewBorder(nil, nil, widget.NewLabel(v.lang.T("scan.label_progress")), progressNote, progress)),
 		widget.NewSeparator(),
 	)
 
@@ -66,10 +64,8 @@ func (v *ScanView) Show() {
 	win.Show()
 
 	timeout := time.Duration(v.timeoutSecs) * time.Second
-	log.Println("[DEBUG] Initializing scanner...", v.cidr)
 	s, err := scanner.NewScanner(v.cidr, v.workers, timeout)
 	if err != nil {
-		log.Printf("[ERROR] Scanner initialization failed: %v", err)
 		helpers.ShowError(err, win)
 		return
 	}
@@ -79,7 +75,6 @@ func (v *ScanView) Show() {
 
 	// Result listener: update UI as results arrive
 	go func() {
-		log.Println("[DEBUG] Listener goroutine started: Waiting for results...")
 		for res := range s.Results {
 			resCopy := res
 			scanned, total := s.Progress()
@@ -88,16 +83,15 @@ func (v *ScanView) Show() {
 			fyne.Do(func() {
 				bar := pct
 				progress.SetValue(bar)
-				progressNote.SetText(fmt.Sprintf("%d%%", int(bar*100)))
-				resultsContainer.Add(makeScanRow(resCopy))
+				progressNote.SetText(v.lang.Tf("scan.progress_pct", int(bar*100)))
+				resultsContainer.Add(makeScanRow(resCopy, v.lang))
 				resultsContainer.Refresh()
 			})
 		}
 
-		log.Println("[DEBUG] Results channel closed. Scan complete.")
 		fyne.Do(func() {
 			progress.SetValue(1)
-			progressNote.SetText("100%")
+			progressNote.SetText(v.lang.T("scan.progress_100"))
 		})
 	}()
 
@@ -111,7 +105,7 @@ func (v *ScanView) Show() {
 			pct := float64(scanned) / float64(total)
 			fyne.Do(func() {
 				progress.SetValue(pct)
-				progressNote.SetText(fmt.Sprintf("%d%%", int(pct*100)))
+				progressNote.SetText(v.lang.Tf("scan.progress_pct", int(pct*100)))
 			})
 			if scanned >= total {
 				break
@@ -121,19 +115,19 @@ func (v *ScanView) Show() {
 	}()
 }
 
-func makeScanRow(r scanner.ScanResult) fyne.CanvasObject {
+func makeScanRow(r scanner.ScanResult, language *lang.Language) fyne.CanvasObject {
 	host := ""
 	if len(r.Hostnames) > 0 {
 		host = r.Hostnames[0]
 	}
 
-	portStr := "No open ports"
+	portStr := language.T("scan.no_open_ports")
 	if len(r.PortsOpen) > 0 {
 		var ports []string
 		for _, p := range r.PortsOpen {
 			ports = append(ports, strconv.Itoa(p))
 		}
-		portStr = "Ports: " + strings.Join(ports, ", ")
+		portStr = language.Tf("scan.ports_label", strings.Join(ports, ", "))
 	}
 
 	ipLabel := widget.NewLabel(r.IP)
@@ -157,10 +151,10 @@ type ScanViewWithProgress struct {
 }
 
 // NewScanViewWithProgress creates a scan view with progress tracking
-func NewScanViewWithProgress(ifaceName, ip string, workers, timeoutSecs int) *ScanViewWithProgress {
+func NewScanViewWithProgress(ifaceName, ip string, workers, timeoutSecs int, language *lang.Language) *ScanViewWithProgress {
 	var count uint32
 	return &ScanViewWithProgress{
-		ScanView:     NewScanView(ifaceName, ip, workers, timeoutSecs),
+		ScanView:     NewScanView(ifaceName, ip, workers, timeoutSecs, language),
 		scannedCount: &count,
 	}
 }

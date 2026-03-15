@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"wgAdmin/internal/ui/lang"
 	customTheme "wgAdmin/internal/ui/theme"
 )
 
@@ -16,6 +17,7 @@ import (
 type StatusBar struct {
 	widget.BaseWidget
 
+	lang       *lang.Language
 	container  *fyne.Container
 	background *canvas.Rectangle
 	icon       *widget.Icon
@@ -23,16 +25,17 @@ type StatusBar struct {
 }
 
 // NewStatusBar creates a new status bar
-func NewStatusBar() *StatusBar {
+func NewStatusBar(language *lang.Language) *StatusBar {
 	bg := canvas.NewRectangle(color.Transparent)
 	bg.CornerRadius = 6
 
 	icon := widget.NewIcon(theme.InfoIcon())
-	msg := widget.NewLabel("Ready")
+	msg := widget.NewLabel(language.T("status.ready"))
 
 	content := container.NewHBox(icon, msg)
 
 	s := &StatusBar{
+		lang:       language,
 		icon:       icon,
 		message:    msg,
 		background: bg,

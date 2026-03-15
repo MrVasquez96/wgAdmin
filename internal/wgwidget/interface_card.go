@@ -1,7 +1,6 @@
 package wgwidget
 
 import (
-	"fmt"
 	"image/color"
 
 	"fyne.io/fyne/v2"
@@ -12,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/MrVasquez96/go-wg/wg/config"
 
+	"wgAdmin/internal/ui/lang"
 	customTheme "wgAdmin/internal/ui/theme"
 )
 
@@ -31,14 +31,16 @@ type InterfaceCard struct {
 
 	iface     config.Interface
 	callbacks InterfaceCardCallbacks
+	lang      *lang.Language
 	container *fyne.Container
 }
 
 // NewInterfaceCard creates a new interface card
-func NewInterfaceCard(iface config.Interface, callbacks InterfaceCardCallbacks) *InterfaceCard {
+func NewInterfaceCard(iface config.Interface, callbacks InterfaceCardCallbacks, language *lang.Language) *InterfaceCard {
 	card := &InterfaceCard{
 		iface:     iface,
 		callbacks: callbacks,
+		lang:      language,
 	}
 	card.ExtendBaseWidget(card)
 	card.container = card.buildCard()
@@ -58,10 +60,10 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	var statusText string
 	if c.iface.Active {
 		statusColor = customTheme.AppColors.Active(variant)
-		statusText = "Active"
+		statusText = c.lang.T("card.active")
 	} else {
 		statusColor = customTheme.AppColors.Inactive(variant)
-		statusText = "Inactive"
+		statusText = c.lang.T("card.inactive")
 	}
 
 	statusDot := canvas.NewCircle(statusColor)
@@ -70,7 +72,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	statusBadge := container.NewHBox(statusDot, statusLabel)
 
 	// IP address
-	ipLabel := widget.NewLabel(fmt.Sprintf("IP: %s", c.iface.IP))
+	ipLabel := widget.NewLabel(c.lang.Tf("card.ip_label", c.iface.IP))
 	ipLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	// Public key display with copy button
@@ -80,7 +82,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		if len(displayKey) > 20 {
 			displayKey = displayKey[:20] + "..."
 		}
-		pubKeyLabel := widget.NewLabel(fmt.Sprintf("Public key: %s", displayKey))
+		pubKeyLabel := widget.NewLabel(c.lang.Tf("card.public_key_label", displayKey))
 		pubKeyLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 		copyKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
@@ -95,14 +97,14 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	// Action buttons
 	var toggleBtn *widget.Button
 	if c.iface.Active {
-		toggleBtn = widget.NewButtonWithIcon("Deactivate", theme.MediaStopIcon(), func() {
+		toggleBtn = widget.NewButtonWithIcon(c.lang.T("card.btn_deactivate"), theme.MediaStopIcon(), func() {
 			if c.callbacks.OnToggle != nil {
 				c.callbacks.OnToggle(c.iface.Name, false)
 			}
 		})
 		toggleBtn.Importance = widget.DangerImportance
 	} else {
-		toggleBtn = widget.NewButtonWithIcon("Activate", theme.MediaPlayIcon(), func() {
+		toggleBtn = widget.NewButtonWithIcon(c.lang.T("card.btn_activate"), theme.MediaPlayIcon(), func() {
 			if c.callbacks.OnToggle != nil {
 				c.callbacks.OnToggle(c.iface.Name, true)
 			}
@@ -110,7 +112,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		toggleBtn.Importance = widget.SuccessImportance
 	}
 
-	scanBtn := widget.NewButtonWithIcon("Scan", theme.SearchIcon(), func() {
+	scanBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_scan"), theme.SearchIcon(), func() {
 		if c.callbacks.OnScan != nil {
 			c.callbacks.OnScan(c.iface.Name, c.iface.IP)
 		}
@@ -119,18 +121,18 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		scanBtn.Disable()
 	}
 
-	editBtn := widget.NewButtonWithIcon("Edit", theme.DocumentCreateIcon(), func() {
+	editBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_edit"), theme.DocumentCreateIcon(), func() {
 		if c.callbacks.OnEdit != nil {
 			c.callbacks.OnEdit(c.iface.Name)
 		}
 	})
-	editPeersBtn := widget.NewButtonWithIcon("Peers", theme.DocumentCreateIcon(), func() {
+	editPeersBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_peers"), theme.DocumentCreateIcon(), func() {
 		if c.callbacks.OnPeers != nil {
 			c.callbacks.OnPeers(c.iface.Name)
 		}
 	})
 
-	deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), func() {
+	deleteBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_delete"), theme.DeleteIcon(), func() {
 		if c.callbacks.OnDelete != nil {
 			c.callbacks.OnDelete(c.iface.Name)
 		}

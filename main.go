@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"wgAdmin/internal/settings"
+	"wgAdmin/internal/ui/lang"
 	"wgAdmin/internal/ui/theme"
 	ui "wgAdmin/internal/ui/views"
 
@@ -18,6 +19,9 @@ func main() {
 	//
 	meta := a.Metadata()
 	cfg := settings.Load(a.Preferences())
+
+	// Initialize language
+	language := lang.New(cfg.Language)
 
 	// Apply theme — NewWGAdminTheme reads cfg.ThemeVariant and forces
 	// light/dark variant accordingly (or follows system when "system")
@@ -58,7 +62,7 @@ func main() {
 		w.SetFullScreen(true)
 	}
 
-	mainView := ui.NewMainView(w, &ctrl, cfg).Build(meta)
+	mainView := ui.NewMainView(w, &ctrl, cfg, language).Build(meta)
 	w.SetContent(mainView)
 	mainView.Refresh()
 

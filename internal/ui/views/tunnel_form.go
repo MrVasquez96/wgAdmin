@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"wgAdmin/internal/ui/helpers"
+	"wgAdmin/internal/ui/lang"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -26,6 +27,7 @@ import (
 type TunnelForm struct {
 	window          fyne.Window
 	ctrl            *wg.WG
+	lang            *lang.Language
 	isEdit          bool
 	isPeer          bool
 	name            string
@@ -54,7 +56,7 @@ type TunnelForm struct {
 }
 
 // NewTunnelForm creates a new tunnel form
-func NewTunnelForm(parent fyne.Window, ctrl *wg.WG, existingName string, existingConfig *config.Config, onSave func(string, *config.Config) error, onCancel func(), clientConfigDir string) *TunnelForm {
+func NewTunnelForm(parent fyne.Window, ctrl *wg.WG, existingName string, existingConfig *config.Config, onSave func(string, *config.Config) error, onCancel func(), clientConfigDir string, language *lang.Language) *TunnelForm {
 	tunnelName := existingName
 	isEdit := existingName != ""
 	if isEdit {
@@ -63,6 +65,7 @@ func NewTunnelForm(parent fyne.Window, ctrl *wg.WG, existingName string, existin
 	f := &TunnelForm{
 		window:              parent,
 		ctrl:                ctrl,
+		lang:                language,
 		isEdit:              existingName != "",
 		name:                tunnelName,
 		clientConfigDir:     clientConfigDir,
@@ -82,15 +85,15 @@ func NewTunnelForm(parent fyne.Window, ctrl *wg.WG, existingName string, existin
 		onCancel:            onCancel,
 	}
 
-	f.nameEntry.SetPlaceHolder("e.g., wg0")
-	f.privateKeyEntry.SetPlaceHolder("Base64 encoded private key")
-	f.addressEntry.SetPlaceHolder("e.g., 10.0.0.1/24")
-	f.dnsEntry.SetPlaceHolder("e.g., 1.1.1.1 (optional)")
-	f.listenPortEntry.SetPlaceHolder("e.g., 51820 (optional)")
-	f.publicEndpointEntry.SetPlaceHolder("e.g., vpn.example.com:51820 (for client configs)")
-	f.mtuEntry.SetPlaceHolder("e.g., 1420 (optional)")
-	f.postUpEntry.SetPlaceHolder("e.g., iptables -A FORWARD -i %i -j ACCEPT (optional)")
-	f.postDownEntry.SetPlaceHolder("e.g., iptables -D FORWARD -i %i -j ACCEPT (optional)")
+	f.nameEntry.SetPlaceHolder(language.T("tunnel.placeholder_name"))
+	f.privateKeyEntry.SetPlaceHolder(language.T("tunnel.placeholder_private_key"))
+	f.addressEntry.SetPlaceHolder(language.T("tunnel.placeholder_address"))
+	f.dnsEntry.SetPlaceHolder(language.T("tunnel.placeholder_dns"))
+	f.listenPortEntry.SetPlaceHolder(language.T("tunnel.placeholder_listen_port"))
+	f.publicEndpointEntry.SetPlaceHolder(language.T("tunnel.placeholder_endpoint"))
+	f.mtuEntry.SetPlaceHolder(language.T("tunnel.placeholder_mtu"))
+	f.postUpEntry.SetPlaceHolder(language.T("tunnel.placeholder_postup"))
+	f.postDownEntry.SetPlaceHolder(language.T("tunnel.placeholder_postdown"))
 	f.postUpEntry.Wrapping = fyne.TextWrapWord
 	f.postDownEntry.Wrapping = fyne.TextWrapWord
 
@@ -142,7 +145,7 @@ func (f *TunnelForm) updatePublicKey() {
 	}
 	pubKey, err := wg.DerivePublicKey(f.privateKeyEntry.Text)
 	if err != nil {
-		f.publicKeyLabel.SetText("(invalid key)")
+		f.publicKeyLabel.SetText(f.lang.T("tunnel.invalid_key"))
 	} else {
 		f.publicKeyLabel.SetText(pubKey)
 	}
@@ -160,15 +163,15 @@ func (f *TunnelForm) getTunnelName() string {
 
 // Show displays the tunnel form
 func (f *TunnelForm) Show() {
-	title := "Add Tunnel"
+	title := f.lang.T("tunnel.title_add")
 	if f.isEdit {
-		title = "Edit Tunnel: " + f.name
+		title = f.lang.Tf("tunnel.title_edit", f.name)
 	}
 
 	win := fyne.CurrentApp().NewWindow(title)
 	win.Resize(fyne.NewSize(700, 750))
 
-	generateKeyBtn := widget.NewButtonWithIcon("Generate Keys", theme.ViewRefreshIcon(), func() {
+	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T("tunnel.btn_generate_keys"), theme.ViewRefreshIcon(), func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
 			helpers.ShowError(err, win)
@@ -179,7 +182,7 @@ func (f *TunnelForm) Show() {
 	})
 
 	copyPubKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		if f.publicKeyLabel.Text != "" && f.publicKeyLabel.Text != "(invalid key)" {
+		if f.publicKeyLabel.Text != "" && f.publicKeyLabel.Text != f.lang.T("tunnel.invalid_key") {
 			win.Clipboard().SetContent(f.publicKeyLabel.Text)
 		}
 	})
@@ -193,19 +196,19 @@ func (f *TunnelForm) Show() {
 	f.postDownEntry.SetMinRowsVisible(3)
 
 	interfaceForm := widget.NewForm(
-		widget.NewFormItem("Tunnel Name", f.nameEntry),
-		widget.NewFormItem("Private Key", privKeyRow),
-		widget.NewFormItem("Public Key", pubKeyRow),
-		widget.NewFormItem("Address (CIDR)", f.addressEntry),
-		widget.NewFormItem("DNS", f.dnsEntry),
-		//widget.NewFormItem("Listen Port", f.listenPortEntry),
-		widget.NewFormItem("Endpoint", f.publicEndpointEntry),
-		widget.NewFormItem("MTU", f.mtuEntry),
-		widget.NewFormItem("PostUp", f.postUpEntry),
-		widget.NewFormItem("PostDown", f.postDownEntry),
+		widget.NewFormItem(f.lang.T("tunnel.label_name"), f.nameEntry),
+		widget.NewFormItem(f.lang.T("tunnel.label_private_key"), privKeyRow),
+		widget.NewFormItem(f.lang.T("tunnel.label_public_key"), pubKeyRow),
+		widget.NewFormItem(f.lang.T("tunnel.label_address"), f.addressEntry),
+		widget.NewFormItem(f.lang.T("tunnel.label_dns"), f.dnsEntry),
+		//widget.NewFormItem(f.lang.T("tunnel.label_listen_port"), f.listenPortEntry),
+		widget.NewFormItem(f.lang.T("tunnel.label_endpoint"), f.publicEndpointEntry),
+		widget.NewFormItem(f.lang.T("tunnel.label_mtu"), f.mtuEntry),
+		widget.NewFormItem(f.lang.T("tunnel.label_postup"), f.postUpEntry),
+		widget.NewFormItem(f.lang.T("tunnel.label_postdown"), f.postDownEntry),
 	)
 
-	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+	saveBtn := widget.NewButtonWithIcon(f.lang.T("common.save"), theme.DocumentSaveIcon(), func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
 			helpers.ShowError(errs[0], win)
@@ -214,7 +217,6 @@ func (f *TunnelForm) Show() {
 
 		name := f.getTunnelName()
 		if err := f.onSave(name, cfg); err != nil {
-			fmt.Println("error saving", err)
 			helpers.ShowError(err, win)
 			return
 		}
@@ -223,7 +225,7 @@ func (f *TunnelForm) Show() {
 	})
 	saveBtn.Importance = widget.HighImportance
 
-	cancelBtn := widget.NewButton("Cancel", func() {
+	cancelBtn := widget.NewButton(f.lang.T("common.cancel"), func() {
 		if f.onCancel != nil {
 			f.onCancel()
 		}
@@ -237,7 +239,7 @@ func (f *TunnelForm) Show() {
 		container.NewPadded(buttons),
 		nil, nil,
 		container.NewVScroll(container.NewVBox(
-			container.NewPadded(widget.NewCard("Interface Configuration", "", interfaceForm)),
+			container.NewPadded(widget.NewCard(f.lang.T("tunnel.card_interface"), "", interfaceForm)),
 		)),
 	)
 
@@ -247,9 +249,9 @@ func (f *TunnelForm) Show() {
 
 // ShowPeers displays the peers editing form
 func (f *TunnelForm) ShowPeers() {
-	title := "Peers / Clients"
+	title := f.lang.T("tunnel.peers_title")
 	if f.isEdit {
-		title = "Edit Peer: " + f.name
+		title = f.lang.Tf("tunnel.peers_edit", f.name)
 	}
 
 	win := fyne.CurrentApp().NewWindow(title)
@@ -279,7 +281,7 @@ func (f *TunnelForm) ShowPeers() {
 			}
 			peerName := peer.Name
 			if peerName == "" {
-				peerName = "(unnamed)"
+				peerName = f.lang.T("tunnel.unnamed_peer")
 			}
 			label.SetText(fmt.Sprintf("%s... - %s", displayKey, peerName))
 
@@ -293,12 +295,12 @@ func (f *TunnelForm) ShowPeers() {
 						f.peerPrivateKeys[p.PublicKey.String()] = privateKey
 					}
 					f.peersList.Refresh()
-				}, nil)
+				}, nil, f.lang)
 				peerForm.Show(win)
 			}
 
 			deleteBtn.OnTapped = func() {
-				helpers.ShowConfirm("Delete Peer", "Remove this peer?", func(yes bool) {
+				helpers.ShowConfirm(f.lang.T("tunnel.delete_peer_title"), f.lang.T("tunnel.delete_peer_msg"), func(yes bool) {
 					if yes {
 						pubKey := f.peers[id].PublicKey.String()
 						delete(f.peerPrivateKeys, pubKey)
@@ -310,14 +312,14 @@ func (f *TunnelForm) ShowPeers() {
 		},
 	)
 
-	addPeerBtn := widget.NewButtonWithIcon("Add Peer", theme.ContentAddIcon(), func() {
+	addPeerBtn := widget.NewButtonWithIcon(f.lang.T("tunnel.btn_add_peer"), theme.ContentAddIcon(), func() {
 		peerForm := NewPeerForm(nil, func(p config.PeerConfig, privateKey string) {
 			f.peers = append(f.peers, p)
 			if privateKey != "" {
 				f.peerPrivateKeys[p.PublicKey.String()] = privateKey
 			}
 			f.peersList.Refresh()
-		}, nil)
+		}, nil, f.lang)
 		peerForm.Show(win)
 	})
 
@@ -327,13 +329,13 @@ func (f *TunnelForm) ShowPeers() {
 	)
 
 	peersSection := container.NewBorder(
-		widget.NewLabel("Peers"),
+		widget.NewLabel(f.lang.T("tunnel.label_peers")),
 		addPeerBtn,
 		nil, nil,
 		sizedList,
 	)
 
-	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+	saveBtn := widget.NewButtonWithIcon(f.lang.T("common.save"), theme.DocumentSaveIcon(), func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
 			helpers.ShowError(errs[0], win)
@@ -342,7 +344,6 @@ func (f *TunnelForm) ShowPeers() {
 
 		name := f.getTunnelName()
 		if err := f.onSave(name, cfg); err != nil {
-			fmt.Println("error saving", err)
 			helpers.ShowError(err, win)
 			return
 		}
@@ -351,7 +352,7 @@ func (f *TunnelForm) ShowPeers() {
 	})
 	saveBtn.Importance = widget.HighImportance
 
-	cancelBtn := widget.NewButton("Cancel", func() {
+	cancelBtn := widget.NewButton(f.lang.T("common.cancel"), func() {
 		if f.onCancel != nil {
 			f.onCancel()
 		}
@@ -365,7 +366,7 @@ func (f *TunnelForm) ShowPeers() {
 		container.NewPadded(buttons),
 		nil, nil,
 		container.NewVScroll(container.NewVBox(
-			container.NewPadded(widget.NewCard("Peers", "", peersSection)),
+			container.NewPadded(widget.NewCard(f.lang.T("tunnel.card_peers"), "", peersSection)),
 		)),
 	)
 
@@ -379,24 +380,22 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 	}
 
 	if f.publicEndpointEntry.Text == "" {
-		helpers.ShowInformation("Client Configs",
-			"No public endpoint set - skipping client config generation.\nSet the Public Endpoint field to generate client configs.", win)
-		fmt.Println("Empty endpoint")
+		helpers.ShowInformation(f.lang.T("tunnel.client_config_title"),
+			f.lang.T("tunnel.no_endpoint_msg"), win)
 		return
 	}
 
 	endpoint := f.publicEndpointEntry.Text
 	host, portStr, err := net.SplitHostPort(endpoint)
 	if err != nil {
-		fmt.Println("invalid endpoint")
-		helpers.ShowError(fmt.Errorf("invalid public endpoint for client configs: %w", err), win)
+		helpers.ShowError(fmt.Errorf(f.lang.T("tunnel.invalid_endpoint_error"), err), win)
 		return
 	}
 	port, _ := strconv.Atoi(portStr)
 
 	clientDir := filepath.Join(f.clientConfigDir, tunnelName)
 	if err := os.MkdirAll(clientDir, 0755); err != nil {
-		helpers.ShowError(fmt.Errorf("failed to create client config directory: %w", err), win)
+		helpers.ShowError(fmt.Errorf(f.lang.T("tunnel.mkdir_error"), err), win)
 		return
 	}
 
@@ -430,7 +429,7 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 		}
 		_, err = clientCtrl.NewClientConfig(*serverCfg, peerOpts, privKey, true)
 		if err != nil {
-			helpers.ShowError(fmt.Errorf("client config for '%s': %w", peer.Name, err), win)
+			helpers.ShowError(fmt.Errorf(f.lang.Tf("tunnel.client_config_error", peer.Name), err), win)
 			continue
 		}
 		generated = append(generated, clientPath)
@@ -438,8 +437,8 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 
 	if len(generated) > 0 {
 		absDir, _ := filepath.Abs(clientDir)
-		msg := fmt.Sprintf("Generated %d client config(s) in:\n%s", len(generated), absDir)
-		helpers.ShowInformation("Client Configs", msg, win)
+		msg := f.lang.Tf("tunnel.client_config_success", len(generated), absDir)
+		helpers.ShowInformation(f.lang.T("tunnel.client_config_title"), msg, win)
 	}
 }
 
@@ -455,19 +454,19 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 	}
 
 	if f.privateKeyEntry.Text == "" {
-		return nil, []error{wg.ValidationError{Field: "PrivateKey", Message: "required"}}
+		return nil, []error{wg.ValidationError{Field: "PrivateKey", Message: f.lang.T("error.required")}}
 	}
 	if !wg.ValidateKey(f.privateKeyEntry.Text) {
-		return nil, []error{wg.ValidationError{Field: "PrivateKey", Message: "invalid format"}}
+		return nil, []error{wg.ValidationError{Field: "PrivateKey", Message: f.lang.T("error.invalid_format")}}
 	}
 	privKey, err := wgtypes.ParseKey(f.privateKeyEntry.Text)
 	if err != nil {
-		return nil, []error{wg.ValidationError{Field: "PrivateKey", Message: "invalid key"}}
+		return nil, []error{wg.ValidationError{Field: "PrivateKey", Message: f.lang.T("error.invalid_key")}}
 	}
 	cfg.Interface.PrivateKey = privKey
 
 	if f.addressEntry.Text == "" {
-		return nil, []error{wg.ValidationError{Field: "Address", Message: "required"}}
+		return nil, []error{wg.ValidationError{Field: "Address", Message: f.lang.T("error.required")}}
 	}
 	for _, addr := range strings.Split(f.addressEntry.Text, ",") {
 		addr = strings.TrimSpace(addr)
@@ -484,10 +483,8 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 
 		_, ipNet, err := net.ParseCIDR(addr)
 		if err != nil {
-			return nil, []error{wg.ValidationError{Field: "Address", Message: "invalid CIDR format"}}
+			return nil, []error{wg.ValidationError{Field: "Address", Message: f.lang.T("error.invalid_cidr_format")}}
 		}
-		fmt.Println("addr:", addr)
-		fmt.Println("IpNet:", ipNet)
 		cfg.Interface.Address = append(cfg.Interface.Address, *ipNet)
 	}
 
@@ -499,7 +496,7 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 			}
 			ip := net.ParseIP(dns)
 			if ip == nil {
-				return nil, []error{wg.ValidationError{Field: "DNS", Message: fmt.Sprintf("invalid DNS address: %s", dns)}}
+				return nil, []error{wg.ValidationError{Field: "DNS", Message: f.lang.Tf("error.invalid_dns", dns)}}
 			}
 			cfg.Interface.DNS = append(cfg.Interface.DNS, ip)
 		}
@@ -508,17 +505,17 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 	if f.listenPortEntry.Text != "" {
 		port, err := strconv.Atoi(f.listenPortEntry.Text)
 		if err != nil {
-			return nil, []error{wg.ValidationError{Field: "ListenPort", Message: "must be a number"}}
+			return nil, []error{wg.ValidationError{Field: "ListenPort", Message: f.lang.T("error.must_be_number")}}
 		}
 		if port < 0 || port > 65535 {
-			return nil, []error{wg.ValidationError{Field: "ListenPort", Message: "must be 0-65535"}}
+			return nil, []error{wg.ValidationError{Field: "ListenPort", Message: f.lang.T("error.port_range")}}
 		}
 		cfg.Interface.ListenPort = &port
 	}
 
 	if f.publicEndpointEntry.Text != "" {
 		if !wg.ValidateEndpoint(f.publicEndpointEntry.Text) {
-			return nil, []error{wg.ValidationError{Field: "PublicEndpoint", Message: "invalid format (host:port)"}}
+			return nil, []error{wg.ValidationError{Field: "PublicEndpoint", Message: f.lang.T("error.invalid_endpoint")}}
 		}
 		cfg.PublicEndpoint = f.publicEndpointEntry.Text
 		for i := range cfg.Peers {
@@ -531,7 +528,7 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 	if f.mtuEntry.Text != "" {
 		mtu, err := strconv.Atoi(f.mtuEntry.Text)
 		if err != nil {
-			return nil, []error{wg.ValidationError{Field: "MTU", Message: "must be a number"}}
+			return nil, []error{wg.ValidationError{Field: "MTU", Message: f.lang.T("error.must_be_number")}}
 		}
 		cfg.Interface.MTU = mtu
 	}
@@ -541,10 +538,10 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 
 	if !f.isEdit {
 		if !wg.ValidateName(f.nameEntry.Text) {
-			return nil, []error{wg.ValidationError{Field: "Name", Message: "must be 1-15 alphanumeric characters"}}
+			return nil, []error{wg.ValidationError{Field: "Name", Message: f.lang.T("error.invalid_name")}}
 		}
 		if f.ctrl.ConfigExists(f.nameEntry.Text) {
-			return nil, []error{wg.ValidationError{Field: "Name", Message: "tunnel already exists"}}
+			return nil, []error{wg.ValidationError{Field: "Name", Message: f.lang.T("error.tunnel_exists")}}
 		}
 	}
 

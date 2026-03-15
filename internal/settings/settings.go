@@ -18,6 +18,7 @@ const (
 	KeyPrivilegeEscalation = "privilege_escalation"
 	KeyFontSize            = "font_size"
 	KeyUseCustomFont       = "use_custom_font"
+	KeyLanguage            = "language"
 	KeyAccentColor         = "accent_color" // Deprecated: use KeyLightAccentColor and KeyDarkAccentColor
 
 	// Color settings - Light mode
@@ -79,6 +80,7 @@ const (
 	DefaultPrivilegeEscalation = "none"
 	DefaultFontSize            = "normal"
 	DefaultUseCustomFont       = true
+	DefaultLanguage            = "english"
 	DefaultAccentColor         = "#1a73e8" // Deprecated: use DefaultLightAccentColor
 
 	// Light mode color defaults - Material Design inspired
@@ -139,6 +141,7 @@ type AppSettings struct {
 	ScanTimeoutSecs     int
 	PrivilegeEscalation string
 	FontSize            string
+	Language            string
 	AccentColor         string // Deprecated: use LightAccentColor and DarkAccentColor
 	UseCustomFont       bool
 
@@ -201,6 +204,7 @@ func Load(prefs fyne.Preferences) *AppSettings {
 		ScanTimeoutSecs:     prefs.IntWithFallback(KeyScanTimeoutSecs, DefaultScanTimeoutSecs),
 		PrivilegeEscalation: prefs.StringWithFallback(KeyPrivilegeEscalation, DefaultPrivilegeEscalation),
 		FontSize:            prefs.StringWithFallback(KeyFontSize, DefaultFontSize),
+		Language:            prefs.StringWithFallback(KeyLanguage, DefaultLanguage),
 		AccentColor:         prefs.StringWithFallback(KeyAccentColor, DefaultAccentColor),
 		UseCustomFont:       prefs.BoolWithFallback(KeyUseCustomFont, DefaultUseCustomFont),
 
@@ -263,6 +267,7 @@ func (s *AppSettings) Save(prefs fyne.Preferences) {
 	prefs.SetInt(KeyScanTimeoutSecs, s.ScanTimeoutSecs)
 	prefs.SetString(KeyPrivilegeEscalation, s.PrivilegeEscalation)
 	prefs.SetString(KeyFontSize, s.FontSize)
+	prefs.SetString(KeyLanguage, s.Language)
 	prefs.SetString(KeyAccentColor, s.AccentColor)
 	prefs.SetBool(KeyUseCustomFont, s.UseCustomFont)
 
