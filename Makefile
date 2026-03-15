@@ -1,19 +1,21 @@
-.PHONY: all build install
+.PHONY: all rebuild build install uninstall
 
 TMP_DIR     := ./tmp_build
 BUILD_DIR   := ./build
-BUILD_DONE  := $(BUILD_DIR)/.build_done
+BUILD_EXISTS  := $(BUILD_DIR)/usr
 
 INSTALL_REQUIREMENTS := \
     $(BUILD_DIR)/usr/local/bin/wgAdmin \
     $(BUILD_DIR)/usr/local/share/applications/wgAdmin.desktop \
     $(BUILD_DIR)/usr/local/share/pixmaps/wgAdmin.png
 
-all: build install
+all: rebuild uninstall install
+
+rebuild: clean build
 
 build: $(BUILD_DONE)
 
-$(BUILD_DONE):
+$(BUILD_EXISTS):
 	@echo "Starting build..."
 	mkdir -p $(BUILD_DIR) $(TMP_DIR)
 	~/go/bin/fyne release --target linux
@@ -23,7 +25,7 @@ $(BUILD_DONE):
 	rm -rf $(TMP_DIR)
 	touch $(BUILD_DONE)
 
-install: $(BUILD_DONE)
+install: $(BUILD_EXISTS)
 	@make uninstall
 	@if [ -f $(BUILD_DIR)/Makefile ]; then \
 		$(MAKE) -C $(BUILD_DIR) user-install; \
@@ -34,7 +36,7 @@ install: $(BUILD_DONE)
 uninstall: 
 	-rm -rf $(HOME)/.local/share/applications/wgAdmin.desktop
 	-rm -rf $(HOME)/.local/bin/wgAdmin
-	-rm -rf $(HOME)/.local/share/icons/$(Icon)
+	-rm -rf $(HOME)/.local/share/icons/wgAdmin.png
 	sudo rm -rf usr/share/applications/wgAdmin.desktop
 	sudo rm -rf usr/bin/wgAdmin
 	sudo rm -rf usr/share/pixmaps/wgAdmin.png

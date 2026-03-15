@@ -18,26 +18,23 @@ A GUI application for managing WireGuard VPN configurations on Linux.
 - Linux with wireguard module loaded
 - Root privileges
 
+__Building from source__
+- [Go](https://go.dev/doc/install) >= 1.24.5
+- [Fyne](fyne.io/fyne/v2) v2.7.0
+- [Make](https://man7.org/linux/man-pages/man1/make.1.html)
+
 ## Installation
+__Note:__ This is has only been tested with ubuntu based OS. Use `make build` and `./build/usr/local/bin/wgAdmin` if needed.
 
 ```bash
 git clone https://github.com/MrVasquez96/wgAdmin
 cd wgAdmin
-```
-### Building and running from source
-
-```bash
-make build
-sudo ./build/usr/local/bin/wgAdmin
-```
-
-### Setup desktop app
-```bash
 make install
 ```
 1. Checks if `build/.build_done` file exists. 
 2. Builds from source if missing and install destop app for linux.
-
+4. Kopies binary, destop file and logo/ocon to dedicated folders for desktop apps in linux. 
+3. The app should now be available in your desktop applications selection under `wgAdmin`.
 
 ## License
 
