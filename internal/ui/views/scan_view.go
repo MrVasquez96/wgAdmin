@@ -40,7 +40,7 @@ func (v *ScanView) Show() {
 		return
 	}
 
-	win := fyne.CurrentApp().NewWindow(v.lang.Tf("scan.title", v.ifaceName))
+	win := fyne.CurrentApp().NewWindow(v.lang.Tf(lang.Scan_title, v.ifaceName))
 	win.Resize(fyne.NewSize(850, 600))
 
 	progress := widget.NewProgressBar()
@@ -53,10 +53,10 @@ func (v *ScanView) Show() {
 
 	header := container.NewVBox(
 		container.NewHBox(
-			widget.NewLabel(v.lang.T("scan.label_scanning")),
+			widget.NewLabel(v.lang.T(lang.Scan_label_scanning)),
 			cidrLabel,
 		),
-		container.NewPadded(container.NewBorder(nil, nil, widget.NewLabel(v.lang.T("scan.label_progress")), progressNote, progress)),
+		container.NewPadded(container.NewBorder(nil, nil, widget.NewLabel(v.lang.T(lang.Scan_label_progress)), progressNote, progress)),
 		widget.NewSeparator(),
 	)
 
@@ -83,7 +83,7 @@ func (v *ScanView) Show() {
 			fyne.Do(func() {
 				bar := pct
 				progress.SetValue(bar)
-				progressNote.SetText(v.lang.Tf("scan.progress_pct", int(bar*100)))
+				progressNote.SetText(v.lang.Tf(lang.Scan_progress_pct, int(bar*100)))
 				resultsContainer.Add(makeScanRow(resCopy, v.lang))
 				resultsContainer.Refresh()
 			})
@@ -91,7 +91,7 @@ func (v *ScanView) Show() {
 
 		fyne.Do(func() {
 			progress.SetValue(1)
-			progressNote.SetText(v.lang.T("scan.progress_100"))
+			progressNote.SetText(v.lang.T(lang.Scan_progress_100))
 		})
 	}()
 
@@ -105,7 +105,7 @@ func (v *ScanView) Show() {
 			pct := float64(scanned) / float64(total)
 			fyne.Do(func() {
 				progress.SetValue(pct)
-				progressNote.SetText(v.lang.Tf("scan.progress_pct", int(pct*100)))
+				progressNote.SetText(v.lang.Tf(lang.Scan_progress_pct, int(pct*100)))
 			})
 			if scanned >= total {
 				break
@@ -121,13 +121,13 @@ func makeScanRow(r scanner.ScanResult, language *lang.Language) fyne.CanvasObjec
 		host = r.Hostnames[0]
 	}
 
-	portStr := language.T("scan.no_open_ports")
+	portStr := language.T(lang.Scan_no_open_ports)
 	if len(r.PortsOpen) > 0 {
 		var ports []string
 		for _, p := range r.PortsOpen {
 			ports = append(ports, strconv.Itoa(p))
 		}
-		portStr = language.Tf("scan.ports_label", strings.Join(ports, ", "))
+		portStr = language.Tf(lang.Scan_ports_label, strings.Join(ports, ", "))
 	}
 
 	ipLabel := widget.NewLabel(r.IP)

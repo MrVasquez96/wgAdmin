@@ -30,7 +30,7 @@ func NewStatusBar(language *lang.Language) *StatusBar {
 	bg.CornerRadius = 6
 
 	icon := widget.NewIcon(theme.InfoIcon())
-	msg := widget.NewLabel(language.T("status.ready"))
+	msg := widget.NewLabel(language.T(lang.Status_ready))
 
 	content := container.NewHBox(icon, msg)
 

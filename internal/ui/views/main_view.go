@@ -56,7 +56,7 @@ func NewMainView(window fyne.Window, ctrl *wg.WG, cfg *settings.AppSettings, lan
 		statusBar:     wgwidget.NewStatusBar(language),
 		busyDialog:    wgwidget.NewBusyDialog(window),
 		filterEntry:   widget.NewEntry(),
-		autoRefresh:   widget.NewCheck(language.Tf("main.auto_refresh", cfg.AutoRefreshSecs), nil),
+		autoRefresh:   widget.NewCheck(language.Tf(lang.Main_auto_refresh, cfg.AutoRefreshSecs), nil),
 		stopAuto:      make(chan struct{}),
 	}
 }
@@ -73,26 +73,26 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 	// Import tunnel
 	importBtn := v.newImportButton()
 	// Add tunnel button
-	addBtn := widget.NewButtonWithIcon(v.lang.T("main.add_tunnel"), theme.ContentAddIcon(), func() {
+	addBtn := widget.NewButtonWithIcon(v.lang.T(lang.Main_add_tunnel), theme.ContentAddIcon(), func() {
 		v.showAddTunnelForm()
 	})
 
 	addBtn.Importance = widget.HighImportance
 
 	// Backups button
-	backupsBtn := widget.NewButtonWithIcon(v.lang.T("main.backups"), theme.FolderOpenIcon(), func() {
+	backupsBtn := widget.NewButtonWithIcon(v.lang.T(lang.Main_backups), theme.FolderOpenIcon(), func() {
 		v.showBackupsDialog()
 	})
 
 	// Filter
-	v.filterEntry.SetPlaceHolder(v.lang.T("main.filter_placeholder"))
+	v.filterEntry.SetPlaceHolder(v.lang.T(lang.Main_filter_placeholder))
 	v.filterEntry.OnChanged = func(s string) {
 		v.rebuild()
 	}
 	filterContainer := container.NewGridWrap(fyne.NewSize(200, v.filterEntry.MinSize().Height), v.filterEntry)
 
 	// Refresh button
-	refreshBtn := widget.NewButtonWithIcon(v.lang.T("common.refresh"), theme.ViewRefreshIcon(), func() {
+	refreshBtn := widget.NewButtonWithIcon(v.lang.T(lang.Common_refresh), theme.ViewRefreshIcon(), func() {
 		v.Refresh()
 	})
 
@@ -133,7 +133,7 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 	scroll.SetMinSize(fyne.NewSize(860, 480))
 
 	// Footer hint
-	v.hint = widget.NewRichTextFromMarkdown(v.lang.Tf("main.footer_hint", v.settings.WGConfigPath))
+	v.hint = widget.NewRichTextFromMarkdown(v.lang.Tf(lang.Main_footer_hint, v.settings.WGConfigPath))
 	v.hint.Wrapping = fyne.TextWrapWord
 
 	// Main content
@@ -148,7 +148,7 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 }
 func (v *MainView) newImportButton() *widget.Button {
 
-	return widget.NewButtonWithIcon(v.lang.T("main.import_from_file"), theme.DocumentSaveIcon(), func() {
+	return widget.NewButtonWithIcon(v.lang.T(lang.Main_import_from_file), theme.DocumentSaveIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err != nil {
 				helpers.ShowError(err, v.window)
@@ -162,16 +162,16 @@ func (v *MainView) newImportButton() *widget.Button {
 			// data, _ := io.ReadAll(reader)
 			filePath := reader.URI().Path()
 			if filepath.Ext(filePath) != ".conf" {
-				helpers.ShowError(errors.New(v.lang.T("main.import_error_ext")), v.window)
+				helpers.ShowError(errors.New(v.lang.T(lang.Main_import_error_ext)), v.window)
 				return
 			}
 			cfg, err := config.ParseConfig(filePath)
 			if err != nil {
-				helpers.ShowError(errors.New(v.lang.Tf("main.import_error_invalid", err.Error())), v.window)
+				helpers.ShowError(errors.New(v.lang.Tf(lang.Main_import_error_invalid, err.Error())), v.window)
 				return
 			}
 			if err = cfg.Validate(); err != nil {
-				helpers.ShowInformation(v.lang.T("main.import_validation_title"), v.lang.T("main.import_validation_msg"), v.window)
+				helpers.ShowInformation(v.lang.T(lang.Main_import_validation_title), v.lang.T(lang.Main_import_validation_msg), v.window)
 			}
 			name := cfg.Name
 			if name == "Unknown" {
@@ -181,11 +181,11 @@ func (v *MainView) newImportButton() *widget.Button {
 			_, err = os.Stat(filepath.Join(v.settings.WGConfigPath, reader.URI().Name()))
 
 			if err == nil {
-				helpers.ShowConfirm(v.lang.T("main.import_overwrite_title"), v.lang.T("main.import_overwrite_msg"), func(b bool) {
+				helpers.ShowConfirm(v.lang.T(lang.Main_import_overwrite_title), v.lang.T(lang.Main_import_overwrite_msg), func(b bool) {
 					if b {
 						v.save(name, cfg)
 					} else {
-						helpers.ShowInformation(v.lang.T("common.aborted"), v.lang.T("main.import_aborted_msg"), v.window)
+						helpers.ShowInformation(v.lang.T(lang.Common_aborted), v.lang.T(lang.Main_import_aborted_msg), v.window)
 					}
 				}, v.window)
 				return
@@ -203,15 +203,15 @@ func (v *MainView) save(name string, cfg *config.Config) {
 	}
 	err := config.WriteConfig(v.settings.WGConfigPath, name, cfg)
 	if err != nil {
-		helpers.ShowError(errors.New(v.lang.Tf("main.error_saving", err.Error())), v.window)
+		helpers.ShowError(errors.New(v.lang.Tf(lang.Main_error_saving, err.Error())), v.window)
 		return
 	}
-	helpers.ShowInformation(v.lang.T("main.import_success_title"), v.lang.Tf("main.import_success_msg", name), v.window)
+	helpers.ShowInformation(v.lang.T(lang.Main_import_success_title), v.lang.Tf(lang.Main_import_success_msg, name), v.window)
 }
 
 // Refresh reloads the interface list
 func (v *MainView) Refresh() {
-	v.busyDialog.Show(v.lang.T("status.refresh_title"), v.lang.T("status.refreshing"))
+	v.busyDialog.Show(v.lang.T(lang.Status_refresh_title), v.lang.T(lang.Status_refreshing))
 
 	go func() {
 		interfaces, err := v.ctrl.ListInterfaces()
@@ -261,7 +261,7 @@ func (v *MainView) rebuild() {
 			},
 			OnCopyPubKey: func(pubKey string) {
 				v.window.Clipboard().SetContent(pubKey)
-				v.statusBar.SetStatus(v.lang.T("status.copied_pubkey"), true)
+				v.statusBar.SetStatus(v.lang.T(lang.Status_copied_pubkey), true)
 			},
 		}, v.lang)
 
@@ -275,9 +275,9 @@ func (v *MainView) rebuild() {
 }
 
 func (v *MainView) toggleInterface(name string, activate bool) {
-	actionKey := "status.deactivating"
+	actionKey := lang.Status_deactivating
 	if activate {
-		actionKey = "status.activating"
+		actionKey = lang.Status_activating
 	}
 
 	v.busyDialog.Show(name, v.lang.T(actionKey))
@@ -294,14 +294,14 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 				if err != nil {
 					if strings.Contains(err.Error(), "invalid endpoint") {
 						v.statusBar.SetStatus(
-							v.lang.Tf("status.endpoint_unreachable", name, v.lastRefresh.Format(time.Kitchen)),
+							v.lang.Tf(lang.Status_endpoint_unreachable, name, v.lastRefresh.Format(time.Kitchen)),
 							false,
 						)
 					}
 				} else {
-					statusKey := "main.deactivated_status"
+					statusKey := lang.Main_deactivated_status
 					if activate {
-						statusKey = "main.activated_status"
+						statusKey = lang.Main_activated_status
 					}
 					v.statusBar.SetStatus(v.lang.Tf(statusKey, name), true)
 				}
@@ -327,7 +327,7 @@ func (v *MainView) showEditTunnelForm(name string) {
 	path := v.ctrl.GetConfigPath(name)
 	cfg, err := config.ParseConfig(path)
 	if err != nil {
-		helpers.ShowError(fmt.Errorf(v.lang.T("main.failed_to_load_config"), err), v.window)
+		helpers.ShowError(fmt.Errorf(v.lang.T(lang.Main_failed_to_load_config), err), v.window)
 		return
 	}
 
@@ -341,7 +341,7 @@ func (v *MainView) showEditPeersTunnelForm(name string) {
 	path := v.ctrl.GetConfigPath(name)
 	cfg, err := config.ParseConfig(path)
 	if err != nil {
-		helpers.ShowError(fmt.Errorf(v.lang.T("main.failed_to_load_config"), err), v.window)
+		helpers.ShowError(fmt.Errorf(v.lang.T(lang.Main_failed_to_load_config), err), v.window)
 		return
 	}
 
@@ -354,8 +354,8 @@ func (v *MainView) showEditPeersTunnelForm(name string) {
 func (v *MainView) preCheckActiveDialog(name string, cfg *config.Config) bool {
 	iface := v.findInterface(name)
 	if iface != nil && iface.Active {
-		helpers.ShowConfirm(v.lang.T("main.tunnel_active_title"),
-			v.lang.Tf("main.tunnel_active_msg", name),
+		helpers.ShowConfirm(v.lang.T(lang.Main_tunnel_active_title),
+			v.lang.Tf(lang.Main_tunnel_active_msg, name),
 			func(yes bool) {
 				if yes {
 					v.openEditForm(name, cfg)
@@ -393,7 +393,7 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 	iface := v.findInterface(name)
 
 	deleteFn := func() {
-		v.busyDialog.Show(v.lang.T("main.delete_tunnel_title"), v.lang.Tf("main.deleting", name))
+		v.busyDialog.Show(v.lang.T(lang.Main_delete_tunnel_title), v.lang.Tf(lang.Main_deleting, name))
 
 		go func() {
 			if iface != nil && iface.Active {
@@ -408,7 +408,7 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 				if err != nil {
 					v.statusBar.SetStatus(fmt.Sprintf("Error: %v", err), false)
 				} else {
-					v.statusBar.SetStatus(v.lang.Tf("main.deleted_status", name), true)
+					v.statusBar.SetStatus(v.lang.Tf(lang.Main_deleted_status, name), true)
 				}
 
 				v.Refresh()
@@ -421,12 +421,12 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 		return
 	}
 
-	msg := v.lang.Tf("main.delete_tunnel_msg", name, v.ctrl.GetConfigPath(name))
+	msg := v.lang.Tf(lang.Main_delete_tunnel_msg, name, v.ctrl.GetConfigPath(name))
 	if iface != nil && iface.Active {
-		msg += v.lang.T("main.delete_tunnel_active_warn")
+		msg += v.lang.T(lang.Main_delete_tunnel_active_warn)
 	}
 
-	helpers.ShowConfirm(v.lang.T("main.delete_tunnel_title"), msg, func(yes bool) {
+	helpers.ShowConfirm(v.lang.T(lang.Main_delete_tunnel_title), msg, func(yes bool) {
 		if !yes {
 			return
 		}
@@ -488,11 +488,11 @@ func (v *MainView) applySettings(updated *settings.AppSettings) {
 	}
 
 	// Update auto-refresh label
-	v.autoRefresh.Text = v.lang.Tf("main.auto_refresh", updated.AutoRefreshSecs)
+	v.autoRefresh.Text = v.lang.Tf(lang.Main_auto_refresh, updated.AutoRefreshSecs)
 	v.autoRefresh.Refresh()
 
 	// Update footer hint
-	v.hint.ParseMarkdown(v.lang.Tf("main.footer_hint", updated.WGConfigPath))
+	v.hint.ParseMarkdown(v.lang.Tf(lang.Main_footer_hint, updated.WGConfigPath))
 
 	// Apply theme variant — the new theme reads ThemeVariant from settings
 	// and forces light/dark/system accordingly

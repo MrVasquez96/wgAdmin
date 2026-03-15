@@ -39,24 +39,24 @@ func NewBackupView(parent fyne.Window, ctrl *wg.WG, onRestore func(), language *
 
 // Show opens the backup/restore window
 func (bv *BackupView) Show() {
-	bv.win = fyne.CurrentApp().NewWindow(bv.lang.T("backup.title"))
+	bv.win = fyne.CurrentApp().NewWindow(bv.lang.T(lang.Backup_title))
 	bv.win.Resize(fyne.NewSize(700, 500))
 
 	// Clean old backups button
-	cleanBtn := widget.NewButtonWithIcon(bv.lang.T("backup.btn_clean_old"), theme.DeleteIcon(), func() {
-		helpers.ShowConfirm(bv.lang.T("backup.clean_confirm_title"),
-			bv.lang.T("backup.clean_confirm_msg"),
+	cleanBtn := widget.NewButtonWithIcon(bv.lang.T(lang.Backup_btn_clean_old), theme.DeleteIcon(), func() {
+		helpers.ShowConfirm(bv.lang.T(lang.Backup_clean_confirm_title),
+			bv.lang.T(lang.Backup_clean_confirm_msg),
 			func(yes bool) {
 				if !yes {
 					return
 				}
 				removed, err := bv.ctrl.CleanOldBackups(30 * 24 * time.Hour)
 				if err != nil {
-					helpers.ShowError(fmt.Errorf(bv.lang.T("backup.error_cleanup"), err), bv.win)
+					helpers.ShowError(fmt.Errorf(bv.lang.T(lang.Backup_error_cleanup), err), bv.win)
 					return
 				}
-				helpers.ShowInformation(bv.lang.T("backup.clean_success_title"),
-					bv.lang.Tf("backup.clean_success_msg", removed), bv.win)
+				helpers.ShowInformation(bv.lang.T(lang.Backup_clean_success_title),
+					bv.lang.Tf(lang.Backup_clean_success_msg, removed), bv.win)
 				bv.refresh()
 			}, bv.win)
 	})
@@ -79,12 +79,12 @@ func (bv *BackupView) refresh() {
 
 	backups, err := bv.ctrl.ListBackups()
 	if err != nil {
-		bv.listContainer.Add(widget.NewLabel(bv.lang.Tf("backup.error_loading", err)))
+		bv.listContainer.Add(widget.NewLabel(bv.lang.Tf(lang.Backup_error_loading, err)))
 		return
 	}
 
 	if len(backups) == 0 {
-		bv.listContainer.Add(widget.NewLabel(bv.lang.T("backup.no_backups")))
+		bv.listContainer.Add(widget.NewLabel(bv.lang.T(lang.Backup_no_backups)))
 		return
 	}
 
@@ -96,18 +96,18 @@ func (bv *BackupView) refresh() {
 
 		timeLabel := widget.NewLabel(backup.Timestamp.Format("2006-01-02 15:04:05"))
 
-		restoreBtn := widget.NewButtonWithIcon(bv.lang.T("common.restore"), theme.HistoryIcon(), func() {
-			msg := bv.lang.Tf("backup.restore_confirm_msg", backup.Filename, backup.Name)
-			helpers.ShowConfirm(bv.lang.T("backup.restore_confirm_title"), msg, func(yes bool) {
+		restoreBtn := widget.NewButtonWithIcon(bv.lang.T(lang.Common_restore), theme.HistoryIcon(), func() {
+			msg := bv.lang.Tf(lang.Backup_restore_confirm_msg, backup.Filename, backup.Name)
+			helpers.ShowConfirm(bv.lang.T(lang.Backup_restore_confirm_title), msg, func(yes bool) {
 				if !yes {
 					return
 				}
 				if err := bv.ctrl.RestoreBackup(backup.Filename); err != nil {
-					helpers.ShowError(fmt.Errorf(bv.lang.T("backup.error_restore"), err), bv.win)
+					helpers.ShowError(fmt.Errorf(bv.lang.T(lang.Backup_error_restore), err), bv.win)
 					return
 				}
-				helpers.ShowInformation(bv.lang.T("backup.restore_success_title"),
-					bv.lang.Tf("backup.restore_success_msg", backup.Name), bv.win)
+				helpers.ShowInformation(bv.lang.T(lang.Backup_restore_success_title),
+					bv.lang.Tf(lang.Backup_restore_success_msg, backup.Name), bv.win)
 				if bv.onRestore != nil {
 					bv.onRestore()
 				}

@@ -44,23 +44,23 @@ func NewSettingsView(parent fyne.Window, current *settings.AppSettings, onApply 
 
 // Show displays the settings window
 func (sv *SettingsView) Show() {
-	win := fyne.CurrentApp().NewWindow(sv.lang.T("settings.title"))
+	win := fyne.CurrentApp().NewWindow(sv.lang.T(lang.Settings_title))
 	win.Resize(fyne.NewSize(900, 900))
 
 	// --- Paths section ---
 	wgPathEntry := widget.NewEntry()
 	wgPathEntry.SetText(sv.current.WGConfigPath)
-	wgPathEntry.SetPlaceHolder(sv.lang.T("settings.placeholder_wg_path"))
+	wgPathEntry.SetPlaceHolder(sv.lang.T(lang.Settings_placeholder_wg_path))
 
 	clientDirEntry := widget.NewEntry()
 	clientDirEntry.SetText(sv.current.ClientConfigDir)
-	clientDirEntry.SetPlaceHolder(sv.lang.T("settings.placeholder_client_dir"))
+	clientDirEntry.SetPlaceHolder(sv.lang.T(lang.Settings_placeholder_client_dir))
 
 	pathsForm := widget.NewForm(
-		widget.NewFormItem(sv.lang.T("settings.label_wg_path"), wgPathEntry),
-		widget.NewFormItem(sv.lang.T("settings.label_client_dir"), clientDirEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_wg_path), wgPathEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_client_dir), clientDirEntry),
 	)
-	pathsCard := widget.NewCard(sv.lang.T("settings.card_paths"), sv.lang.T("settings.card_paths_desc"), pathsForm)
+	pathsCard := widget.NewCard(sv.lang.T(lang.Settings_card_paths), sv.lang.T(lang.Settings_card_paths_desc), pathsForm)
 
 	// --- Window section ---
 	widthEntry := widget.NewEntry()
@@ -69,27 +69,27 @@ func (sv *SettingsView) Show() {
 	heightEntry := widget.NewEntry()
 	heightEntry.SetText(strconv.Itoa(sv.current.WindowHeight))
 
-	fullscreenCheck := widget.NewCheck(sv.lang.T("settings.check_fullscreen"), nil)
+	fullscreenCheck := widget.NewCheck(sv.lang.T(lang.Settings_label_fullscreen), nil)
 	fullscreenCheck.Checked = sv.current.StartFullscreen
 
 	windowForm := widget.NewForm(
-		widget.NewFormItem(sv.lang.T("settings.label_width"), widthEntry),
-		widget.NewFormItem(sv.lang.T("settings.label_height"), heightEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_width), widthEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_height), heightEntry),
 		widget.NewFormItem("", fullscreenCheck),
 	)
-	windowNote := widget.NewLabel(sv.lang.T("settings.window_note"))
+	windowNote := widget.NewLabel(sv.lang.T(lang.Settings_note_window))
 	windowNote.TextStyle = fyne.TextStyle{Italic: true}
-	windowCard := widget.NewCard(sv.lang.T("settings.card_window"), sv.lang.T("settings.card_window_desc"),
+	windowCard := widget.NewCard(sv.lang.T(lang.Settings_card_window), sv.lang.T(lang.Settings_card_window_desc),
 		container.NewVBox(windowForm, windowNote))
 
 	// --- Behavior section ---
-	autoRefreshCheck := widget.NewCheck(sv.lang.T("settings.check_auto_refresh"), nil)
+	autoRefreshCheck := widget.NewCheck(sv.lang.T(lang.Settings_label_auto_refresh), nil)
 	autoRefreshCheck.Checked = sv.current.AutoRefreshEnabled
 
 	refreshSecsEntry := widget.NewEntry()
 	refreshSecsEntry.SetText(strconv.Itoa(sv.current.AutoRefreshSecs))
 
-	confirmDeleteCheck := widget.NewCheck(sv.lang.T("settings.check_confirm_delete"), nil)
+	confirmDeleteCheck := widget.NewCheck(sv.lang.T(lang.Settings_label_confirm_delete), nil)
 	confirmDeleteCheck.Checked = sv.current.ConfirmBeforeDelete
 
 	themeSelect := widget.NewSelect([]string{"system", "light", "dark"}, nil)
@@ -108,13 +108,13 @@ func (sv *SettingsView) Show() {
 	langSelect.SetSelected(langCodeToDisplay[sv.current.Language])
 
 	behaviorForm := widget.NewForm(
-		widget.NewFormItem(sv.lang.T("settings.label_theme"), themeSelect),
-		widget.NewFormItem(sv.lang.T("settings.label_language"), langSelect),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_theme), themeSelect),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_language), langSelect),
 		widget.NewFormItem("", autoRefreshCheck),
-		widget.NewFormItem(sv.lang.T("settings.label_refresh_interval"), refreshSecsEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_refresh_interval), refreshSecsEntry),
 		widget.NewFormItem("", confirmDeleteCheck),
 	)
-	behaviorCard := widget.NewCard(sv.lang.T("settings.card_behavior"), "", behaviorForm)
+	behaviorCard := widget.NewCard(sv.lang.T(lang.Settings_card_behavior), "", behaviorForm)
 
 	// --- Scanner section ---
 	workersEntry := widget.NewEntry()
@@ -124,14 +124,14 @@ func (sv *SettingsView) Show() {
 	scanTimeoutEntry.SetText(strconv.Itoa(sv.current.ScanTimeoutSecs))
 
 	scanForm := widget.NewForm(
-		widget.NewFormItem(sv.lang.T("settings.label_workers"), workersEntry),
-		widget.NewFormItem(sv.lang.T("settings.label_timeout"), scanTimeoutEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_scan_workers), workersEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_scan_timeout), scanTimeoutEntry),
 	)
-	scanCard := widget.NewCard(sv.lang.T("settings.card_scanner"), "", scanForm)
+	scanCard := widget.NewCard(sv.lang.T(lang.Settings_card_scanner), "", scanForm)
 
 	// --- Privilege escalation section ---
 	privOptions := []string{"none", "pkexec", "sudo"}
-	pkexecNotInstalled := sv.lang.T("settings.pkexec_not_installed")
+	pkexecNotInstalled := sv.lang.T(lang.Settings_privilege_pkexec_unavailable)
 	if !settings.PkexecAvailable() {
 		privOptions = []string{"none", pkexecNotInstalled, "sudo"}
 	}
@@ -142,12 +142,12 @@ func (sv *SettingsView) Show() {
 	}
 	privSelect.SetSelected(privSelected)
 
-	privNote := widget.NewRichTextFromMarkdown(sv.lang.T("settings.priv_note"))
+	privNote := widget.NewRichTextFromMarkdown(sv.lang.T(lang.Settings_privilege_desc))
 	privNote.Wrapping = fyne.TextWrapWord
 
-	privCard := widget.NewCard(sv.lang.T("settings.card_privilege"), sv.lang.T("settings.card_privilege_desc"),
+	privCard := widget.NewCard(sv.lang.T(lang.Settings_card_privilege), sv.lang.T(lang.Settings_card_privilege_desc),
 		container.NewVBox(
-			widget.NewForm(widget.NewFormItem(sv.lang.T("settings.label_method"), privSelect)),
+			widget.NewForm(widget.NewFormItem(sv.lang.T(lang.Settings_label_privilege_method), privSelect)),
 			privNote,
 		),
 	)
@@ -156,10 +156,10 @@ func (sv *SettingsView) Show() {
 	fontSizeSelect := widget.NewSelect([]string{"small", "normal", "large"}, nil)
 	fontSizeSelect.SetSelected(sv.current.FontSize)
 
-	useCustomFontCheck := widget.NewCheck(sv.lang.T("settings.check_custom_font"), nil)
+	useCustomFontCheck := widget.NewCheck(sv.lang.T(lang.Settings_label_custom_font), nil)
 	useCustomFontCheck.Checked = sv.current.UseCustomFont
 
-	appearanceNote := widget.NewLabel(sv.lang.T("settings.appearance_note"))
+	appearanceNote := widget.NewLabel(sv.lang.T(lang.Settings_note_appearance))
 	appearanceNote.TextStyle = fyne.TextStyle{Italic: true}
 
 	// Light Mode Colors
@@ -184,25 +184,25 @@ func (sv *SettingsView) Show() {
 	lightScrollbarEntry := sv.createColorEntry(sv.current.LightScrollbarColor, settings.DefaultLightScrollbarColor)
 
 	lightColorsForm := widget.NewForm(
-		widget.NewFormItem(sv.lang.T("settings.color_accent"), lightAccentEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_background"), lightBackgroundEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_surface"), lightSurfaceEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_text_primary"), lightTextPrimaryEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_text_secondary"), lightTextSecondaryEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_text_disabled"), lightTextDisabledEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_border"), lightBorderEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_success"), lightSuccessEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_error"), lightErrorEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_warning"), lightWarningEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_info"), lightInfoEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_input_bg"), lightInputBgEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_input_border"), lightInputBorderEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_hover"), lightHoverEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_pressed"), lightPressedEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_selection"), lightSelectionEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_header_bg"), lightHeaderBgEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_menu_bg"), lightMenuBgEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_scrollbar"), lightScrollbarEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_accent), lightAccentEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_background), lightBackgroundEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_surface), lightSurfaceEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_text_primary), lightTextPrimaryEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_text_secondary), lightTextSecondaryEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_text_disabled), lightTextDisabledEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_border), lightBorderEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_success), lightSuccessEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_error), lightErrorEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_warning), lightWarningEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_info), lightInfoEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_input_bg), lightInputBgEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_input_border), lightInputBorderEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_hover), lightHoverEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_pressed), lightPressedEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_selection), lightSelectionEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_header_bg), lightHeaderBgEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_menu_bg), lightMenuBgEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_light_scrollbar), lightScrollbarEntry),
 	)
 
 	// Dark Mode Colors
@@ -227,52 +227,52 @@ func (sv *SettingsView) Show() {
 	darkScrollbarEntry := sv.createColorEntry(sv.current.DarkScrollbarColor, settings.DefaultDarkScrollbarColor)
 
 	darkColorsForm := widget.NewForm(
-		widget.NewFormItem(sv.lang.T("settings.color_accent"), darkAccentEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_background"), darkBackgroundEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_surface"), darkSurfaceEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_text_primary"), darkTextPrimaryEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_text_secondary"), darkTextSecondaryEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_text_disabled"), darkTextDisabledEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_border"), darkBorderEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_success"), darkSuccessEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_error"), darkErrorEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_warning"), darkWarningEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_info"), darkInfoEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_input_bg"), darkInputBgEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_input_border"), darkInputBorderEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_hover"), darkHoverEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_pressed"), darkPressedEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_selection"), darkSelectionEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_header_bg"), darkHeaderBgEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_menu_bg"), darkMenuBgEntry),
-		widget.NewFormItem(sv.lang.T("settings.color_scrollbar"), darkScrollbarEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_accent), darkAccentEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_background), darkBackgroundEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_surface), darkSurfaceEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_text_primary), darkTextPrimaryEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_text_secondary), darkTextSecondaryEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_text_disabled), darkTextDisabledEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_border), darkBorderEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_success), darkSuccessEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_error), darkErrorEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_warning), darkWarningEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_info), darkInfoEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_input_bg), darkInputBgEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_input_border), darkInputBorderEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_hover), darkHoverEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_pressed), darkPressedEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_selection), darkSelectionEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_header_bg), darkHeaderBgEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_menu_bg), darkMenuBgEntry),
+		widget.NewFormItem(sv.lang.T(lang.Settings_color_dark_scrollbar), darkScrollbarEntry),
 	)
 
 	// Create accordion for color settings with better sizing
 	lightColorContainer := container.NewVBox(
-		widget.NewLabel(sv.lang.T("settings.light_colors_desc")),
+		widget.NewLabel(sv.lang.T(lang.Settings_light_colors_label)),
 		lightColorsForm,
 	)
 	darkColorContainer := container.NewVBox(
-		widget.NewLabel(sv.lang.T("settings.dark_colors_desc")),
+		widget.NewLabel(sv.lang.T(lang.Settings_dark_colors_label)),
 		darkColorsForm,
 	)
 
 	colorAccordion := widget.NewAccordion(
-		widget.NewAccordionItem(sv.lang.T("settings.accordion_light"), lightColorContainer),
-		widget.NewAccordionItem(sv.lang.T("settings.accordion_dark"), darkColorContainer),
+		widget.NewAccordionItem(sv.lang.T(lang.Settings_accordion_light_colors), lightColorContainer),
+		widget.NewAccordionItem(sv.lang.T(lang.Settings_accordion_dark_colors), darkColorContainer),
 	)
 
 	appearanceForm := widget.NewForm(
-		widget.NewFormItem(sv.lang.T("settings.label_font_size"), fontSizeSelect),
+		widget.NewFormItem(sv.lang.T(lang.Settings_label_font_size), fontSizeSelect),
 		widget.NewFormItem("", useCustomFontCheck),
 	)
 
-	appearanceCard := widget.NewCard(sv.lang.T("settings.card_appearance"), sv.lang.T("settings.card_appearance_desc"),
+	appearanceCard := widget.NewCard(sv.lang.T(lang.Settings_card_appearance), sv.lang.T(lang.Settings_card_appearance_desc),
 		container.NewVBox(appearanceForm, colorAccordion, appearanceNote))
 
 	// --- Buttons ---
-	saveBtn := widget.NewButtonWithIcon(sv.lang.T("common.save"), theme.DocumentSaveIcon(), func() {
+	saveBtn := widget.NewButtonWithIcon(sv.lang.T(lang.Common_save), theme.DocumentSaveIcon(), func() {
 		updated, err := sv.validate(
 			wgPathEntry, clientDirEntry,
 			widthEntry, heightEntry, fullscreenCheck,
@@ -305,8 +305,8 @@ func (sv *SettingsView) Show() {
 	})
 	saveBtn.Importance = widget.HighImportance
 
-	resetBtn := widget.NewButtonWithIcon(sv.lang.T("settings.btn_reset"), theme.ViewRefreshIcon(), func() {
-		helpers.ShowConfirm(sv.lang.T("settings.reset_title"), sv.lang.T("settings.reset_msg"), func(yes bool) {
+	resetBtn := widget.NewButtonWithIcon(sv.lang.T(lang.Settings_btn_reset), theme.ViewRefreshIcon(), func() {
+		helpers.ShowConfirm(sv.lang.T(lang.Settings_reset_confirm_title), sv.lang.T(lang.Settings_reset_confirm_msg), func(yes bool) {
 			if !yes {
 				return
 			}
@@ -370,7 +370,7 @@ func (sv *SettingsView) Show() {
 		}, win)
 	})
 
-	cancelBtn := widget.NewButton(sv.lang.T("common.cancel"), func() { win.Close() })
+	cancelBtn := widget.NewButton(sv.lang.T(lang.Common_cancel), func() { win.Close() })
 
 	buttons := container.NewHBox(resetBtn, layout.NewSpacer(), cancelBtn, saveBtn)
 
@@ -411,34 +411,34 @@ func (sv *SettingsView) validate(
 	darkSelectionEntry, darkHeaderBgEntry, darkMenuBgEntry, darkScrollbarEntry *widget.Entry,
 ) (*settings.AppSettings, error) {
 	if wgPathEntry.Text == "" {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_wg_path_empty"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_wg_path_empty))
 	}
 	if clientDirEntry.Text == "" {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_client_dir_empty"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_client_dir_empty))
 	}
 
 	width, err := strconv.Atoi(widthEntry.Text)
 	if err != nil || width < 400 {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_width"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_width_invalid))
 	}
 	height, err := strconv.Atoi(heightEntry.Text)
 	if err != nil || height < 300 {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_height"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_height_invalid))
 	}
 
 	refreshSecs, err := strconv.Atoi(refreshSecsEntry.Text)
 	if err != nil || refreshSecs < 1 {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_refresh_interval"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_refresh_invalid))
 	}
 
 	workers, err := strconv.Atoi(workersEntry.Text)
 	if err != nil || workers < 1 {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_workers"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_workers_invalid))
 	}
 
 	scanTimeout, err := strconv.Atoi(scanTimeoutEntry.Text)
 	if err != nil || scanTimeout < 1 {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_scan_timeout"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_timeout_invalid))
 	}
 
 	privMethod := privSelect.Selected
@@ -446,17 +446,17 @@ func (sv *SettingsView) validate(
 		privMethod = "pkexec"
 	}
 	if privMethod != "none" && privMethod != "pkexec" && privMethod != "sudo" {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_priv_method"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_privilege_invalid))
 	}
 
 	themeVariant := themeSelect.Selected
 	if themeVariant != "system" && themeVariant != "light" && themeVariant != "dark" {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_theme"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_theme_invalid))
 	}
 
 	fontSize := fontSizeSelect.Selected
 	if fontSize != "small" && fontSize != "normal" && fontSize != "large" {
-		return nil, fmt.Errorf(sv.lang.T("settings.error_font_size"))
+		return nil, fmt.Errorf(sv.lang.T(lang.Error_fontsize_invalid))
 	}
 
 	// Convert language display name back to code
@@ -473,49 +473,49 @@ func (sv *SettingsView) validate(
 
 	// Validate all color entries
 	colorEntries := map[string]*widget.Entry{
-		"light accent color":          lightAccentEntry,
-		"light background color":      lightBackgroundEntry,
-		"light surface color":         lightSurfaceEntry,
-		"light text primary color":    lightTextPrimaryEntry,
-		"light text secondary color":  lightTextSecondaryEntry,
-		"light text disabled color":   lightTextDisabledEntry,
-		"light border color":          lightBorderEntry,
-		"light success color":         lightSuccessEntry,
-		"light error color":           lightErrorEntry,
-		"light warning color":         lightWarningEntry,
-		"light info color":            lightInfoEntry,
-		"light input background":      lightInputBgEntry,
-		"light input border":          lightInputBorderEntry,
-		"light hover color":           lightHoverEntry,
-		"light pressed color":         lightPressedEntry,
-		"light selection color":       lightSelectionEntry,
-		"light header background":     lightHeaderBgEntry,
-		"light menu background":       lightMenuBgEntry,
-		"light scrollbar color":       lightScrollbarEntry,
-		"dark accent color":           darkAccentEntry,
-		"dark background color":       darkBackgroundEntry,
-		"dark surface color":          darkSurfaceEntry,
-		"dark text primary color":     darkTextPrimaryEntry,
-		"dark text secondary color":   darkTextSecondaryEntry,
-		"dark text disabled color":    darkTextDisabledEntry,
-		"dark border color":           darkBorderEntry,
-		"dark success color":          darkSuccessEntry,
-		"dark error color":            darkErrorEntry,
-		"dark warning color":          darkWarningEntry,
-		"dark info color":             darkInfoEntry,
-		"dark input background":       darkInputBgEntry,
-		"dark input border":           darkInputBorderEntry,
-		"dark hover color":            darkHoverEntry,
-		"dark pressed color":          darkPressedEntry,
-		"dark selection color":        darkSelectionEntry,
-		"dark header background":      darkHeaderBgEntry,
-		"dark menu background":        darkMenuBgEntry,
-		"dark scrollbar color":        darkScrollbarEntry,
+		"light accent color":         lightAccentEntry,
+		"light background color":     lightBackgroundEntry,
+		"light surface color":        lightSurfaceEntry,
+		"light text primary color":   lightTextPrimaryEntry,
+		"light text secondary color": lightTextSecondaryEntry,
+		"light text disabled color":  lightTextDisabledEntry,
+		"light border color":         lightBorderEntry,
+		"light success color":        lightSuccessEntry,
+		"light error color":          lightErrorEntry,
+		"light warning color":        lightWarningEntry,
+		"light info color":           lightInfoEntry,
+		"light input background":     lightInputBgEntry,
+		"light input border":         lightInputBorderEntry,
+		"light hover color":          lightHoverEntry,
+		"light pressed color":        lightPressedEntry,
+		"light selection color":      lightSelectionEntry,
+		"light header background":    lightHeaderBgEntry,
+		"light menu background":      lightMenuBgEntry,
+		"light scrollbar color":      lightScrollbarEntry,
+		"dark accent color":          darkAccentEntry,
+		"dark background color":      darkBackgroundEntry,
+		"dark surface color":         darkSurfaceEntry,
+		"dark text primary color":    darkTextPrimaryEntry,
+		"dark text secondary color":  darkTextSecondaryEntry,
+		"dark text disabled color":   darkTextDisabledEntry,
+		"dark border color":          darkBorderEntry,
+		"dark success color":         darkSuccessEntry,
+		"dark error color":           darkErrorEntry,
+		"dark warning color":         darkWarningEntry,
+		"dark info color":            darkInfoEntry,
+		"dark input background":      darkInputBgEntry,
+		"dark input border":          darkInputBorderEntry,
+		"dark hover color":           darkHoverEntry,
+		"dark pressed color":         darkPressedEntry,
+		"dark selection color":       darkSelectionEntry,
+		"dark header background":     darkHeaderBgEntry,
+		"dark menu background":       darkMenuBgEntry,
+		"dark scrollbar color":       darkScrollbarEntry,
 	}
 
 	for name, entry := range colorEntries {
 		if entry.Text != "" && !isValidHexColor(entry.Text) {
-			return nil, fmt.Errorf(sv.lang.Tf("settings.error_invalid_color", name))
+			return nil, fmt.Errorf(sv.lang.Tf(lang.Error_hex_color_invalid, name))
 		}
 	}
 
@@ -538,46 +538,46 @@ func (sv *SettingsView) validate(
 		UseCustomFont:       useCustomFontCheck.Checked,
 
 		// Light mode colors
-		LightAccentColor:         lightAccentEntry.Text,
-		LightBackgroundColor:     lightBackgroundEntry.Text,
-		LightSurfaceColor:        lightSurfaceEntry.Text,
-		LightTextPrimaryColor:    lightTextPrimaryEntry.Text,
-		LightTextSecondaryColor:  lightTextSecondaryEntry.Text,
-		LightTextDisabledColor:   lightTextDisabledEntry.Text,
-		LightBorderColor:         lightBorderEntry.Text,
-		LightSuccessColor:        lightSuccessEntry.Text,
-		LightErrorColor:          lightErrorEntry.Text,
-		LightWarningColor:        lightWarningEntry.Text,
-		LightInfoColor:           lightInfoEntry.Text,
-		LightInputBackgroundColor: lightInputBgEntry.Text,
-		LightInputBorderColor:    lightInputBorderEntry.Text,
-		LightHoverColor:          lightHoverEntry.Text,
-		LightPressedColor:        lightPressedEntry.Text,
-		LightSelectionColor:      lightSelectionEntry.Text,
+		LightAccentColor:           lightAccentEntry.Text,
+		LightBackgroundColor:       lightBackgroundEntry.Text,
+		LightSurfaceColor:          lightSurfaceEntry.Text,
+		LightTextPrimaryColor:      lightTextPrimaryEntry.Text,
+		LightTextSecondaryColor:    lightTextSecondaryEntry.Text,
+		LightTextDisabledColor:     lightTextDisabledEntry.Text,
+		LightBorderColor:           lightBorderEntry.Text,
+		LightSuccessColor:          lightSuccessEntry.Text,
+		LightErrorColor:            lightErrorEntry.Text,
+		LightWarningColor:          lightWarningEntry.Text,
+		LightInfoColor:             lightInfoEntry.Text,
+		LightInputBackgroundColor:  lightInputBgEntry.Text,
+		LightInputBorderColor:      lightInputBorderEntry.Text,
+		LightHoverColor:            lightHoverEntry.Text,
+		LightPressedColor:          lightPressedEntry.Text,
+		LightSelectionColor:        lightSelectionEntry.Text,
 		LightHeaderBackgroundColor: lightHeaderBgEntry.Text,
-		LightMenuBackgroundColor: lightMenuBgEntry.Text,
-		LightScrollbarColor:      lightScrollbarEntry.Text,
+		LightMenuBackgroundColor:   lightMenuBgEntry.Text,
+		LightScrollbarColor:        lightScrollbarEntry.Text,
 
 		// Dark mode colors
-		DarkAccentColor:         darkAccentEntry.Text,
-		DarkBackgroundColor:     darkBackgroundEntry.Text,
-		DarkSurfaceColor:        darkSurfaceEntry.Text,
-		DarkTextPrimaryColor:    darkTextPrimaryEntry.Text,
-		DarkTextSecondaryColor:  darkTextSecondaryEntry.Text,
-		DarkTextDisabledColor:   darkTextDisabledEntry.Text,
-		DarkBorderColor:         darkBorderEntry.Text,
-		DarkSuccessColor:        darkSuccessEntry.Text,
-		DarkErrorColor:          darkErrorEntry.Text,
-		DarkWarningColor:        darkWarningEntry.Text,
-		DarkInfoColor:           darkInfoEntry.Text,
-		DarkInputBackgroundColor: darkInputBgEntry.Text,
-		DarkInputBorderColor:    darkInputBorderEntry.Text,
-		DarkHoverColor:          darkHoverEntry.Text,
-		DarkPressedColor:        darkPressedEntry.Text,
-		DarkSelectionColor:      darkSelectionEntry.Text,
+		DarkAccentColor:           darkAccentEntry.Text,
+		DarkBackgroundColor:       darkBackgroundEntry.Text,
+		DarkSurfaceColor:          darkSurfaceEntry.Text,
+		DarkTextPrimaryColor:      darkTextPrimaryEntry.Text,
+		DarkTextSecondaryColor:    darkTextSecondaryEntry.Text,
+		DarkTextDisabledColor:     darkTextDisabledEntry.Text,
+		DarkBorderColor:           darkBorderEntry.Text,
+		DarkSuccessColor:          darkSuccessEntry.Text,
+		DarkErrorColor:            darkErrorEntry.Text,
+		DarkWarningColor:          darkWarningEntry.Text,
+		DarkInfoColor:             darkInfoEntry.Text,
+		DarkInputBackgroundColor:  darkInputBgEntry.Text,
+		DarkInputBorderColor:      darkInputBorderEntry.Text,
+		DarkHoverColor:            darkHoverEntry.Text,
+		DarkPressedColor:          darkPressedEntry.Text,
+		DarkSelectionColor:        darkSelectionEntry.Text,
 		DarkHeaderBackgroundColor: darkHeaderBgEntry.Text,
-		DarkMenuBackgroundColor: darkMenuBgEntry.Text,
-		DarkScrollbarColor:      darkScrollbarEntry.Text,
+		DarkMenuBackgroundColor:   darkMenuBgEntry.Text,
+		DarkScrollbarColor:        darkScrollbarEntry.Text,
 	}, nil
 }
 

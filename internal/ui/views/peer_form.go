@@ -51,12 +51,12 @@ func NewPeerForm(existing *config.PeerConfig, onSave func(config.PeerConfig, str
 		onCancel:                 onCancel,
 	}
 
-	f.nameEntry.SetPlaceHolder(language.T("peer.placeholder_name"))
-	f.privateKeyEntry.SetPlaceHolder(language.T("peer.placeholder_private_key"))
-	f.publicKeyEntry.SetPlaceHolder(language.T("peer.placeholder_public_key"))
-	f.allowedIPsEntry.SetPlaceHolder(language.T("peer.placeholder_allowed_ips"))
-	f.persistentKeepaliveEntry.SetPlaceHolder(language.T("peer.placeholder_keepalive"))
-	f.presharedKeyEntry.SetPlaceHolder(language.T("peer.placeholder_preshared_key"))
+	f.nameEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_name))
+	f.privateKeyEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_private_key))
+	f.publicKeyEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_public_key))
+	f.allowedIPsEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_allowed_ips))
+	f.persistentKeepaliveEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_keepalive))
+	f.presharedKeyEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_preshared))
 
 	f.privateKeyEntry.OnChanged = func(s string) {
 		f.updatePublicKey()
@@ -92,7 +92,7 @@ func (f *PeerForm) updatePublicKey() {
 	}
 	pubKey, err := wg.DerivePublicKey(f.privateKeyEntry.Text)
 	if err != nil {
-		f.publicKeyLabel.SetText(f.lang.T("peer.invalid_key"))
+		f.publicKeyLabel.SetText(f.lang.T(lang.Peer_public_key_invalid))
 		f.publicKeyEntry.Enable()
 		f.generatedPrivateKey = ""
 		return
@@ -105,7 +105,7 @@ func (f *PeerForm) updatePublicKey() {
 
 // Show displays the peer form dialog
 func (f *PeerForm) Show(parent fyne.Window) {
-	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T("peer.btn_generate_keys"), theme.ViewRefreshIcon(), func() {
+	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T(lang.Peer_btn_generate_keys), theme.ViewRefreshIcon(), func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
 			helpers.ShowError(err, parent)
@@ -125,26 +125,26 @@ func (f *PeerForm) Show(parent fyne.Window) {
 		}
 	})
 	form := container.NewVBox(
-		widget.NewLabel(f.lang.T("peer.label_name")),
+		widget.NewLabel(f.lang.T(lang.Peer_label_name)),
 		f.nameEntry,
 		widget.NewSeparator(),
-		widget.NewLabel(f.lang.T("peer.label_private_key")),
+		widget.NewLabel(f.lang.T(lang.Peer_label_private_key)),
 		container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry),
-		widget.NewLabel(f.lang.T("peer.label_public_key")),
+		widget.NewLabel(f.lang.T(lang.Peer_label_public_key)),
 		container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyEntry),
 
 		widget.NewSeparator(),
-		widget.NewLabel(f.lang.T("peer.label_allowed_ips")),
+		widget.NewLabel(f.lang.T(lang.Peer_label_allowed_ips_server)),
 		f.allowedIPsEntry,
 
-		widget.NewLabel(f.lang.T("peer.label_keepalive")),
+		widget.NewLabel(f.lang.T(lang.Peer_label_keepalive)),
 		f.persistentKeepaliveEntry,
 
-		widget.NewLabel(f.lang.T("peer.label_preshared_key")),
+		widget.NewLabel(f.lang.T(lang.Peer_label_preshared_key)),
 		f.presharedKeyEntry,
 	)
 
-	d := dialog.NewCustomConfirm(f.lang.T("peer.title"), f.lang.T("common.save"), f.lang.T("common.cancel"), form, func(confirmed bool) {
+	d := dialog.NewCustomConfirm(f.lang.T(lang.Peer_form_title), f.lang.T(lang.Common_save), f.lang.T(lang.Common_cancel), form, func(confirmed bool) {
 		if !confirmed {
 			if f.onCancel != nil {
 				f.onCancel()
@@ -172,24 +172,24 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 
 	name := strings.TrimSpace(f.nameEntry.Text)
 	if name == "" {
-		return peer, []error{wg.ValidationError{Field: "Peer.Name", Message: f.lang.T("error.required")}}
+		return peer, []error{wg.ValidationError{Field: "Peer.Name", Message: f.lang.T(lang.Error_required)}}
 	}
 	peer.Name = name
 
 	if f.publicKeyEntry.Text == "" {
-		return peer, []error{wg.ValidationError{Field: "Peer.PublicKey", Message: f.lang.T("error.required")}}
+		return peer, []error{wg.ValidationError{Field: "Peer.PublicKey", Message: f.lang.T(lang.Error_required)}}
 	}
 	if !wg.ValidateKey(f.publicKeyEntry.Text) {
-		return peer, []error{wg.ValidationError{Field: "Peer.PublicKey", Message: f.lang.T("error.invalid_format")}}
+		return peer, []error{wg.ValidationError{Field: "Peer.PublicKey", Message: f.lang.T(lang.Error_invalid_format)}}
 	}
 	pubKey, err := wgtypes.ParseKey(f.publicKeyEntry.Text)
 	if err != nil {
-		return peer, []error{wg.ValidationError{Field: "Peer.PublicKey", Message: f.lang.T("error.invalid_key")}}
+		return peer, []error{wg.ValidationError{Field: "Peer.PublicKey", Message: f.lang.T(lang.Error_invalid_key)}}
 	}
 	peer.PublicKey = pubKey
 
 	if f.allowedIPsEntry.Text == "" {
-		return peer, []error{wg.ValidationError{Field: "Peer.AllowedIPs", Message: f.lang.T("error.required")}}
+		return peer, []error{wg.ValidationError{Field: "Peer.AllowedIPs", Message: f.lang.T(lang.Error_required)}}
 	}
 	for _, cidr := range strings.Split(f.allowedIPsEntry.Text, ",") {
 		cidr = strings.TrimSpace(cidr)
@@ -205,7 +205,7 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 		}
 		_, ipNet, err := net.ParseCIDR(cidr)
 		if err != nil {
-			return peer, []error{wg.ValidationError{Field: "Peer.AllowedIPs", Message: f.lang.Tf("error.invalid_cidr", cidr)}}
+			return peer, []error{wg.ValidationError{Field: "Peer.AllowedIPs", Message: f.lang.Tf(lang.Error_invalid_cidr_value, cidr)}}
 		}
 		peer.AllowedIPs = append(peer.AllowedIPs, *ipNet)
 	}
@@ -213,21 +213,21 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 	if f.persistentKeepaliveEntry.Text != "" {
 		keepalive, err := strconv.Atoi(f.persistentKeepaliveEntry.Text)
 		if err != nil {
-			return peer, []error{wg.ValidationError{Field: "Peer.PersistentKeepalive", Message: f.lang.T("error.must_be_number")}}
+			return peer, []error{wg.ValidationError{Field: "Peer.PersistentKeepalive", Message: f.lang.T(lang.Error_invalid_number)}}
 		}
 		if keepalive < 0 || keepalive > 65535 {
-			return peer, []error{wg.ValidationError{Field: "Peer.PersistentKeepalive", Message: f.lang.T("error.keepalive_range")}}
+			return peer, []error{wg.ValidationError{Field: "Peer.PersistentKeepalive", Message: f.lang.T(lang.Error_invalid_range_0)}}
 		}
 		peer.PersistentKeepalive = keepalive
 	}
 
 	if f.presharedKeyEntry.Text != "" {
 		if !wg.ValidateKey(f.presharedKeyEntry.Text) {
-			return peer, []error{wg.ValidationError{Field: "Peer.PresharedKey", Message: f.lang.T("error.invalid_format")}}
+			return peer, []error{wg.ValidationError{Field: "Peer.PresharedKey", Message: f.lang.T(lang.Error_invalid_format)}}
 		}
 		psk, err := wgtypes.ParseKey(f.presharedKeyEntry.Text)
 		if err != nil {
-			return peer, []error{wg.ValidationError{Field: "Peer.PresharedKey", Message: f.lang.T("error.invalid_key")}}
+			return peer, []error{wg.ValidationError{Field: "Peer.PresharedKey", Message: f.lang.T(lang.Error_invalid_key)}}
 		}
 		peer.PresharedKey = &psk
 	}

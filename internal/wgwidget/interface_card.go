@@ -60,10 +60,10 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	var statusText string
 	if c.iface.Active {
 		statusColor = customTheme.AppColors.Active(variant)
-		statusText = c.lang.T("card.active")
+		statusText = c.lang.T(lang.Card_active)
 	} else {
 		statusColor = customTheme.AppColors.Inactive(variant)
-		statusText = c.lang.T("card.inactive")
+		statusText = c.lang.T(lang.Card_inactive)
 	}
 
 	statusDot := canvas.NewCircle(statusColor)
@@ -72,7 +72,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	statusBadge := container.NewHBox(statusDot, statusLabel)
 
 	// IP address
-	ipLabel := widget.NewLabel(c.lang.Tf("card.ip_label", c.iface.IP))
+	ipLabel := widget.NewLabel(c.lang.Tf(lang.Card_ip_label, c.iface.IP))
 	ipLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	// Public key display with copy button
@@ -82,7 +82,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		if len(displayKey) > 20 {
 			displayKey = displayKey[:20] + "..."
 		}
-		pubKeyLabel := widget.NewLabel(c.lang.Tf("card.public_key_label", displayKey))
+		pubKeyLabel := widget.NewLabel(c.lang.Tf(lang.Card_public_key_label, displayKey))
 		pubKeyLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 		copyKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
@@ -97,14 +97,14 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	// Action buttons
 	var toggleBtn *widget.Button
 	if c.iface.Active {
-		toggleBtn = widget.NewButtonWithIcon(c.lang.T("card.btn_deactivate"), theme.MediaStopIcon(), func() {
+		toggleBtn = widget.NewButtonWithIcon(c.lang.T(lang.Card_btn_deactivate), theme.MediaStopIcon(), func() {
 			if c.callbacks.OnToggle != nil {
 				c.callbacks.OnToggle(c.iface.Name, false)
 			}
 		})
 		toggleBtn.Importance = widget.DangerImportance
 	} else {
-		toggleBtn = widget.NewButtonWithIcon(c.lang.T("card.btn_activate"), theme.MediaPlayIcon(), func() {
+		toggleBtn = widget.NewButtonWithIcon(c.lang.T(lang.Card_btn_activate), theme.MediaPlayIcon(), func() {
 			if c.callbacks.OnToggle != nil {
 				c.callbacks.OnToggle(c.iface.Name, true)
 			}
@@ -112,7 +112,7 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		toggleBtn.Importance = widget.SuccessImportance
 	}
 
-	scanBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_scan"), theme.SearchIcon(), func() {
+	scanBtn := widget.NewButtonWithIcon(c.lang.T(lang.Card_btn_scan), theme.SearchIcon(), func() {
 		if c.callbacks.OnScan != nil {
 			c.callbacks.OnScan(c.iface.Name, c.iface.IP)
 		}
@@ -121,18 +121,18 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 		scanBtn.Disable()
 	}
 
-	editBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_edit"), theme.DocumentCreateIcon(), func() {
+	editBtn := widget.NewButtonWithIcon(c.lang.T(lang.Card_btn_edit), theme.DocumentCreateIcon(), func() {
 		if c.callbacks.OnEdit != nil {
 			c.callbacks.OnEdit(c.iface.Name)
 		}
 	})
-	editPeersBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_peers"), theme.DocumentCreateIcon(), func() {
+	editPeersBtn := widget.NewButtonWithIcon(c.lang.T(lang.Card_btn_peers), theme.DocumentCreateIcon(), func() {
 		if c.callbacks.OnPeers != nil {
 			c.callbacks.OnPeers(c.iface.Name)
 		}
 	})
 
-	deleteBtn := widget.NewButtonWithIcon(c.lang.T("card.btn_delete"), theme.DeleteIcon(), func() {
+	deleteBtn := widget.NewButtonWithIcon(c.lang.T(lang.Card_btn_delete), theme.DeleteIcon(), func() {
 		if c.callbacks.OnDelete != nil {
 			c.callbacks.OnDelete(c.iface.Name)
 		}
