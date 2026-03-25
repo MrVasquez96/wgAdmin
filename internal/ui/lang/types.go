@@ -2,8 +2,8 @@ package lang
 
 // Global translations map - populated by translation files
 var languages = map[string]Translations{
-	"no-nb": englishTranslations,
-	"en":    norwegianTranslations,
+	"en":    englishTranslations,
+	"no-nb": norwegianTranslations,
 }
 
 // AvailableLanguages maps language codes to display names for UI
@@ -246,6 +246,23 @@ const (
 	Scan_result_unknown = scan_ + "result_unknown"
 	Scan_no_open_ports  = scan_ + "no_open_ports"
 	Scan_ports_label    = scan_ + "ports_label"
+
+	// ===== SSH terminal =====
+	ssh_                        = "ssh."
+	Ssh_connect_btn             = ssh_ + "connect_btn"
+	Ssh_dialog_title            = ssh_ + "dialog_title"
+	Ssh_dialog_label_user       = ssh_ + "dialog_label_user"
+	Ssh_dialog_label_pass       = ssh_ + "dialog_label_pass"
+	Ssh_dialog_placeholder_user = ssh_ + "dialog_placeholder_user"
+	Ssh_dialog_placeholder_pass = ssh_ + "dialog_placeholder_pass"
+	Ssh_window_title            = ssh_ + "window_title"
+	Ssh_input_placeholder       = ssh_ + "input_placeholder"
+	Ssh_status_connecting       = ssh_ + "status_connecting"
+	Ssh_status_connected        = ssh_ + "status_connected"
+	Ssh_status_disconnected     = ssh_ + "status_disconnected"
+	Ssh_error_connect           = ssh_ + "error_connect"
+	Ssh_error_session           = ssh_ + "error_session"
+	Ssh_error_shell             = ssh_ + "error_shell"
 
 	// ===== Status messages =====
 	status_                     = "status."

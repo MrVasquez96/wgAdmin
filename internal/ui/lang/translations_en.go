@@ -235,6 +235,22 @@ var englishTranslations = Translations{
 	Scan_no_open_ports:  "No open ports",
 	Scan_ports_label:    "Ports: %s",
 
+	// ===== SSH terminal =====
+	Ssh_connect_btn:             "Connect SSH",
+	Ssh_dialog_title:            "SSH Connection",
+	Ssh_dialog_label_user:       "Username",
+	Ssh_dialog_label_pass:       "Password",
+	Ssh_dialog_placeholder_user: "e.g., root, admin",
+	Ssh_dialog_placeholder_pass: "SSH password",
+	Ssh_window_title:            "SSH: %s",
+	Ssh_input_placeholder:       "Type command and press Enter...",
+	Ssh_status_connecting:       "Connecting to %s...",
+	Ssh_status_connected:        "Connected to %s",
+	Ssh_status_disconnected:     "Disconnected",
+	Ssh_error_connect:           "Connection failed: %v",
+	Ssh_error_session:           "Session failed: %v",
+	Ssh_error_shell:             "Shell failed: %v",
+
 	// ===== Status messages =====
 	Status_ready:                "Ready",
 	Status_refreshing:           "Refreshing interfaces...",

@@ -235,6 +235,22 @@ var norwegianTranslations = Translations{
 	Scan_no_open_ports:  "Ingen åpne porter",
 	Scan_ports_label:    "Porter: %s",
 
+	// ===== SSH terminal =====
+	Ssh_connect_btn:             "Koble til SSH",
+	Ssh_dialog_title:            "SSH-tilkobling",
+	Ssh_dialog_label_user:       "Brukernavn",
+	Ssh_dialog_label_pass:       "Passord",
+	Ssh_dialog_placeholder_user: "f.eks. root, admin",
+	Ssh_dialog_placeholder_pass: "SSH-passord",
+	Ssh_window_title:            "SSH: %s",
+	Ssh_input_placeholder:       "Skriv kommando og trykk Enter...",
+	Ssh_status_connecting:       "Kobler til %s...",
+	Ssh_status_connected:        "Tilkoblet %s",
+	Ssh_status_disconnected:     "Frakoblet",
+	Ssh_error_connect:           "Tilkobling mislyktes: %v",
+	Ssh_error_session:           "Økt mislyktes: %v",
+	Ssh_error_shell:             "Shell mislyktes: %v",
+
 	// ===== Status messages =====
 	Status_ready:                "Klar",
 	Status_refreshing:           "Oppdaterer grensesnitt...",
