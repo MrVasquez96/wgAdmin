@@ -3,6 +3,7 @@ package lang
 var englishTranslations = Translations{
 	// ===== Common actions and labels =====
 	Common_save:     "Save",
+	Common_connect:  "Connect",
 	Common_cancel:   "Cancel",
 	Common_delete:   "Delete",
 	Common_edit:     "Edit",
@@ -240,6 +241,8 @@ var englishTranslations = Translations{
 	Ssh_dialog_title:            "SSH Connection",
 	Ssh_dialog_label_user:       "Username",
 	Ssh_dialog_label_pass:       "Password",
+	Ssh_dialog_label_ssh:		 "Port (Optional)",
+	Ssh_dialog_placeholder_ssh:	 "e.g., 2222, 2223  (defaults to 22)",
 	Ssh_dialog_placeholder_user: "e.g., root, admin",
 	Ssh_dialog_placeholder_pass: "SSH password",
 	Ssh_window_title:            "SSH: %s",

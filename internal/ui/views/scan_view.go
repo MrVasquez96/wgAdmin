@@ -138,17 +138,18 @@ func (v *ScanView) makeScanRow(r scanner.ScanResult, win fyne.Window) fyne.Canva
 		host = r.Hostnames[0]
 	}
 
-	portStr := v.lang.T(lang.Scan_no_open_ports)
-	hasSSH := false
+	portStr := v.lang.T(lang.Scan_no_open_ports) 
 	if len(r.PortsOpen) > 0 {
-		var ports []string
+		var portsStrs []string
 		for _, p := range r.PortsOpen {
-			ports = append(ports, strconv.Itoa(p))
-			if p == 22 {
-				hasSSH = true
+			if p == 22 { 
+				portsStrs = append(portsStrs, strconv.Itoa(p) + " (ssh)")
+			} else {
+				portsStrs = append(portsStrs, strconv.Itoa(p))
+			
 			}
 		}
-		portStr = v.lang.Tf(lang.Scan_ports_label, strings.Join(ports, ", "))
+		portStr = v.lang.Tf(lang.Scan_ports_label, strings.Join(portsStrs, ", "))
 	}
 
 	ipLabel := widget.NewLabel(r.IP)
@@ -158,19 +159,18 @@ func (v *ScanView) makeScanRow(r scanner.ScanResult, win fyne.Window) fyne.Canva
 	portLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	actionCol := container.NewHBox()
-	if hasSSH {
-		ip := r.IP
-		sshBtn := widget.NewButton(v.lang.T(lang.Ssh_connect_btn), func() {
-			v.showSSHDialog(ip, win)
-		})
-		sshBtn.Importance = widget.LowImportance
-		actionCol.Add(sshBtn)
-	}
+	ip := r.IP
+	sshBtn := widget.NewButton(v.lang.T(lang.Ssh_connect_btn), func() {
+		v.showSSHDialog(ip, win)
+	})
+	sshBtn.Importance = widget.LowImportance
+	actionCol.Add(sshBtn)
+
 
 	return container.NewPadded(container.NewGridWithColumns(4,
 		ipLabel,
 		widget.NewLabel(host),
-		portLabel,
+		portLabel, 
 		actionCol,
 	))
 }
@@ -182,19 +182,38 @@ func (v *ScanView) showSSHDialog(ip string, parent fyne.Window) {
 	passEntry := widget.NewPasswordEntry()
 	passEntry.SetPlaceHolder(v.lang.T(lang.Ssh_dialog_placeholder_pass))
 
+	sshPortEntry:= widget.NewEntry()
+	sshPortEntry.SetPlaceHolder(v.lang.T(lang.Ssh_dialog_placeholder_ssh))
+
+	sshPort := ""
+	sshPortEntry.OnChanged = func(s string) {
+		portInt,_:=strconv.Atoi(s)
+		if portInt != 0 {
+			sshPort = s
+		} else {
+			sshPortEntry.SetText(sshPort)
+
+		}
+	}
+	if sshPort == "" {	
+		sshPort="22"
+	}
 	d := dialog.NewForm(
 		v.lang.T(lang.Ssh_dialog_title),
-		v.lang.T(lang.Common_save),
+		v.lang.T(lang.Common_connect),
 		v.lang.T(lang.Common_cancel),
 		[]*widget.FormItem{
 			{Text: v.lang.T(lang.Ssh_dialog_label_user), Widget: userEntry},
 			{Text: v.lang.T(lang.Ssh_dialog_label_pass), Widget: passEntry},
+			{Text: v.lang.T(lang.Ssh_dialog_label_ssh), Widget: sshPortEntry},
 		},
 		func(confirmed bool) {
 			if !confirmed {
 				return
 			}
-			wgwidget.NewSSHTerminal(ip, userEntry.Text, passEntry.Text, v.lang).Show()
+			portInt,_:=strconv.Atoi(sshPort)
+			wgwidget.NewSSHTerminal(ip, userEntry.Text, passEntry.Text, portInt, v.lang).Show()
+			 
 		},
 		parent,
 	)

@@ -16,6 +16,7 @@ const (
 	// ===== Common actions and labels =====
 	common          = "common."
 	Common_save     = common + "save"
+	Common_connect  = common + "connect"
 	Common_cancel   = common + "cancel"
 	Common_delete   = common + "delete"
 	Common_edit     = common + "edit"
@@ -249,6 +250,8 @@ const (
 
 	// ===== SSH terminal =====
 	ssh_                        = "ssh."
+	Ssh_dialog_label_ssh		= ssh_ + "dialog_label_ssh"
+	Ssh_dialog_placeholder_ssh	= ssh_ + "dialog_placeholder_ssh"
 	Ssh_connect_btn             = ssh_ + "connect_btn"
 	Ssh_dialog_title            = ssh_ + "dialog_title"
 	Ssh_dialog_label_user       = ssh_ + "dialog_label_user"

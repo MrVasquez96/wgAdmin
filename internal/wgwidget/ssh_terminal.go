@@ -19,6 +19,7 @@ type SSHTerminal struct {
 	host     string
 	username string
 	password string
+	port 	 int
 	lang     *lang.Language
 
 	win         fyne.Window
@@ -30,18 +31,18 @@ type SSHTerminal struct {
 	client  *ssh.Client
 	session *ssh.Session
 	stdin   io.WriteCloser
-}
-
+} 
 // NewSSHTerminal creates a new SSH terminal component for the given host.
-func NewSSHTerminal(host, username, password string, language *lang.Language) *SSHTerminal {
+func NewSSHTerminal(host, username, password string, port int, language *lang.Language) *SSHTerminal {
+
 	return &SSHTerminal{
 		host:     host,
 		username: username,
 		password: password,
+		port:     port,
 		lang:     language,
 	}
-}
-
+}  
 // Show opens the terminal window and initiates the SSH connection.
 func (t *SSHTerminal) Show() {
 	t.win = fyne.CurrentApp().NewWindow(t.lang.Tf(lang.Ssh_window_title, t.host))
@@ -51,6 +52,11 @@ func (t *SSHTerminal) Show() {
 	t.statusLabel = widget.NewLabel(t.lang.Tf(lang.Ssh_status_connecting, t.host))
 
 	t.outputLabel = widget.NewLabel("")
+
+	if t.port < 1 || t.port > 65535  {
+		t.outputLabel = widget.NewLabel( fmt.Sprintf("port %d is out of the valid range (1-65535). Using default port 22..", t.port))
+		t.port=22 
+	}
 	t.outputLabel.TextStyle = fyne.TextStyle{Monospace: true}
 	t.outputLabel.Wrapping = fyne.TextWrapOff
 	outputScroll := container.NewVScroll(t.outputLabel)
@@ -82,7 +88,7 @@ func (t *SSHTerminal) connect() {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
 	}
 
-	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:22", t.host), cfg)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", t.host, t.port), cfg)
 	if err != nil {
 		fyne.Do(func() {
 			t.appendOutput(t.lang.Tf(lang.Ssh_error_connect, err) + "\n")

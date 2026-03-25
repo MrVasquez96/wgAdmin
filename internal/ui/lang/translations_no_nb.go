@@ -3,6 +3,7 @@ package lang
 var norwegianTranslations = Translations{
 	// ===== Common actions and labels =====
 	Common_save:     "Lagre",
+	Common_connect:  "Koble til",
 	Common_cancel:   "Avbryt",
 	Common_delete:   "Slett",
 	Common_edit:     "Rediger",
@@ -240,6 +241,8 @@ var norwegianTranslations = Translations{
 	Ssh_dialog_title:            "SSH-tilkobling",
 	Ssh_dialog_label_user:       "Brukernavn",
 	Ssh_dialog_label_pass:       "Passord",
+	Ssh_dialog_label_ssh:		 "Port (valgfri)",
+	Ssh_dialog_placeholder_ssh:	  "f.eks. 2222, 2223"",
 	Ssh_dialog_placeholder_user: "f.eks. root, admin",
 	Ssh_dialog_placeholder_pass: "SSH-passord",
 	Ssh_window_title:            "SSH: %s",
