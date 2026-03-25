@@ -242,7 +242,7 @@ var norwegianTranslations = Translations{
 	Ssh_dialog_label_user:       "Brukernavn",
 	Ssh_dialog_label_pass:       "Passord",
 	Ssh_dialog_label_ssh:		 "Port (valgfri)",
-	Ssh_dialog_placeholder_ssh:	  "f.eks. 2222, 2223"",
+	Ssh_dialog_placeholder_ssh:	 "f.eks. 2222, 2223",
 	Ssh_dialog_placeholder_user: "f.eks. root, admin",
 	Ssh_dialog_placeholder_pass: "SSH-passord",
 	Ssh_window_title:            "SSH: %s",
@@ -306,7 +306,7 @@ var norwegianTranslations = Translations{
 	// ===== Main.go messages =====
 	Main_pkexec_failed:      "pkexec feilet: %v\n",
 	Main_pkexec_unavailable: "pkexec ikke tilgjengelig, fortsetter uten root.",
-	Main_privilege_warning: "\n⚠️  ADVARSEL: Kjører uten root-rettigheter\n" +
+	Main_privilege_warning: "\n⚠️  ADVARSEL: Kjører uten administrator rettigheter\n" +
 		"WireGuard-operasjoner krever root-tilgang.\n" +
 		"Aktiver rettighetshevelse i Innstillinger eller kjør med sudo/pkexec.\n",
 }
