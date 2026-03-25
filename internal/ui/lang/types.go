@@ -1,5 +1,17 @@
 package lang
 
+// Global translations map - populated by translation files
+var languages = map[string]Translations{
+	"no-nb": englishTranslations,
+	"en":    norwegianTranslations,
+}
+
+// AvailableLanguages maps language codes to display names for UI
+var AvailableLanguages = map[string]string{
+	"en":    "English",
+	"no-nb": "Norsk Bokmål ",
+}
+
 const (
 	// ===== Common actions and labels =====
 	common          = "common."

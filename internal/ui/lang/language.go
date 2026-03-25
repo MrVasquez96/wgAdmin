@@ -2,21 +2,6 @@ package lang
 
 import "fmt"
 
-// Global translations map - populated by translation files
-var languages = map[string]Translations{
-	"no-nb": englishTranslations,
-	"en":    norwegianTranslations,
-}
-
-// AvailableLanguages maps language codes to display names for UI
-var AvailableLanguages = map[string]string{
-	"en":    "English",
-	"no-nb": "Norsk Bokmål ",
-}
-
-// DefaultLanguage is the fallback language
-const DefaultLanguage = "en"
-
 // Translations is a map of translation keys to their text values
 type Translations map[string]string
 
@@ -25,6 +10,9 @@ type Language struct {
 	code         string
 	translations Translations
 }
+
+// DefaultLanguage is the fallback language
+const DefaultLanguage = "en"
 
 // New creates a new Language instance for the specified language code
 // If the language code is not found, it falls back to DefaultLanguage
