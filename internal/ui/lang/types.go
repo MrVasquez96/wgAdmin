@@ -3,13 +3,13 @@ package lang
 // Global translations map - populated by translation files
 var languages = map[string]Translations{
 	"en":    englishTranslations,
-	"no-nb": norwegianTranslations,
+	//"no-nb": norwegianTranslations,
 }
 
 // AvailableLanguages maps language codes to display names for UI
 var AvailableLanguages = map[string]string{
 	"en":    "English",
-	"no-nb": "Norsk Bokmål ",
+	//"no-nb": "Norsk Bokmål ",
 }
 
 const (

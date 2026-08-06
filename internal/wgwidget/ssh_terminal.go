@@ -3,6 +3,7 @@ package wgwidget
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -19,7 +20,8 @@ type SSHTerminal struct {
 	host     string
 	username string
 	password string
-	port 	 int
+	hostname string
+	port     int
 	lang     *lang.Language
 
 	win         fyne.Window
@@ -28,10 +30,22 @@ type SSHTerminal struct {
 	inputEntry  *widget.Entry
 	statusLabel *widget.Label
 
+	lastCommand string
+	lastLine    string
+
 	client  *ssh.Client
 	session *ssh.Session
 	stdin   io.WriteCloser
-} 
+}
+
+func getHostname() string {
+	contentBytes, err := os.ReadFile("/etc/hostname")
+	if err != nil {
+		return ""
+	}
+	return strings.ReplaceAll(string(contentBytes), "\n", "")
+}
+
 // NewSSHTerminal creates a new SSH terminal component for the given host.
 func NewSSHTerminal(host, username, password string, port int, language *lang.Language) *SSHTerminal {
 
@@ -39,10 +53,12 @@ func NewSSHTerminal(host, username, password string, port int, language *lang.La
 		host:     host,
 		username: username,
 		password: password,
+		hostname: getHostname(),
 		port:     port,
 		lang:     language,
 	}
-}  
+}
+
 // Show opens the terminal window and initiates the SSH connection.
 func (t *SSHTerminal) Show() {
 	t.win = fyne.CurrentApp().NewWindow(t.lang.Tf(lang.Ssh_window_title, t.host))
@@ -53,12 +69,12 @@ func (t *SSHTerminal) Show() {
 
 	t.outputLabel = widget.NewLabel("")
 
-	if t.port < 1 || t.port > 65535  {
-		t.outputLabel = widget.NewLabel( fmt.Sprintf("port %d is out of the valid range (1-65535). Using default port 22..", t.port))
-		t.port=22 
+	if t.port < 1 || t.port > 65535 {
+		t.outputLabel = widget.NewLabel(fmt.Sprintf("port %d is out of the valid range (1-65535). Using default port 22..", t.port))
+		t.port = 22
 	}
 	t.outputLabel.TextStyle = fyne.TextStyle{Monospace: true}
-	t.outputLabel.Wrapping = fyne.TextWrapOff
+	t.outputLabel.Wrapping = fyne.TextWrapWord
 	outputScroll := container.NewVScroll(t.outputLabel)
 
 	t.inputEntry = widget.NewEntry()
@@ -123,7 +139,7 @@ func (t *SSHTerminal) connect() {
 	// Request a pseudo-terminal so interactive commands work correctly.
 	// Failure is non-fatal; the terminal still functions without PTY support.
 	modes := ssh.TerminalModes{
-		ssh.ECHO:          0,
+		ssh.ECHO:          1,
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
 	}
@@ -163,6 +179,7 @@ func (t *SSHTerminal) pumpReader(r io.Reader) {
 			fyne.Do(func() {
 				t.appendOutput(text)
 			})
+
 		}
 		if err != nil {
 			break
@@ -181,6 +198,7 @@ func (t *SSHTerminal) sendCommand(cmd string) {
 	if t.stdin == nil {
 		return
 	}
+	t.lastCommand = cmd
 	t.inputEntry.SetText("")
 	_, _ = fmt.Fprintln(t.stdin, cmd)
 }

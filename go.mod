@@ -4,12 +4,13 @@ go 1.24.5
 
 require (
 	fyne.io/fyne/v2 v2.7.0
-	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
-
-	github.com/MrVasquez96/go-wg v0.0.2
 	github.com/MrVasquez96/go-ipscan v0.0.2
+	github.com/MrVasquez96/go-wg v0.0.2
+	go.uber.org/zap v1.27.1
+	golang.org/x/crypto v0.40.0
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
- 
 
 require (
 	fyne.io/systray v1.11.1-0.20250603113521-ca66a66d8b58 // indirect
@@ -32,7 +33,6 @@ require (
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/mdlayher/genetlink v1.3.2 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
@@ -46,7 +46,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
-	golang.org/x/crypto v0.40.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect

@@ -335,7 +335,7 @@ func (t *WGAdminTheme) Size(name fyne.ThemeSizeName) float32 {
 	case theme.SizeNamePadding:
 		return 12
 	case theme.SizeNameInnerPadding:
-		return 10
+		return 14
 	case theme.SizeNameScrollBar:
 		return 18
 	case theme.SizeNameScrollBarSmall:
@@ -353,7 +353,7 @@ func (t *WGAdminTheme) Size(name fyne.ThemeSizeName) float32 {
 	case theme.SizeNameInputBorder:
 		return 2
 	case theme.SizeNameInputRadius:
-		return 10
+		return 8
 	case theme.SizeNameSelectionRadius:
 		return 6
 	}
@@ -445,11 +445,10 @@ func (c Colors) CardBackground(variant fyne.ThemeVariant) color.Color {
 
 // CardActiveBackground returns the background for active cards (tinted with success color)
 func (c Colors) CardActiveBackground(variant fyne.ThemeVariant) color.Color {
-	// Light green tint for light mode, dark green tint for dark mode
 	if variant == theme.VariantLight {
-		return color.NRGBA{R: 232, G: 245, B: 233, A: 255}
+		return color.NRGBA{R: 220, G: 242, B: 228, A: 255}
 	}
-	return color.NRGBA{R: 30, G: 50, B: 35, A: 255}
+	return color.NRGBA{R: 13, G: 35, B: 24, A: 255} // #0d2318
 }
 
 // Border returns the border color
@@ -466,40 +465,33 @@ func (c Colors) Border(variant fyne.ThemeVariant) color.Color {
 // CardElevation returns a subtle shadow color for card depth
 func (c Colors) CardElevation(variant fyne.ThemeVariant) color.Color {
 	if variant == theme.VariantLight {
-		return color.NRGBA{R: 0, G: 0, B: 0, A: 12}
+		return color.NRGBA{R: 0, G: 0, B: 0, A: 20}
 	}
-	return color.NRGBA{R: 0, G: 0, B: 0, A: 30}
+	return color.NRGBA{R: 0, G: 0, B: 0, A: 102} // rgba(0,0,0,0.4)
 }
 
 // StatusSuccessBg returns a tinted background for success status
 func (c Colors) StatusSuccessBg(variant fyne.ThemeVariant) color.Color {
 	if variant == theme.VariantLight {
-		return color.NRGBA{R: 232, G: 245, B: 233, A: 255}
+		return color.NRGBA{R: 220, G: 242, B: 228, A: 255}
 	}
-	return color.NRGBA{R: 30, G: 50, B: 35, A: 255}
+	return color.NRGBA{R: 13, G: 35, B: 24, A: 255} // #0d2318
 }
 
 // StatusErrorBg returns a tinted background for error status
 func (c Colors) StatusErrorBg(variant fyne.ThemeVariant) color.Color {
 	if variant == theme.VariantLight {
-		return color.NRGBA{R: 254, G: 235, B: 234, A: 255}
+		return color.NRGBA{R: 252, G: 228, B: 227, A: 255}
 	}
-	return color.NRGBA{R: 60, G: 30, B: 30, A: 255}
+	return color.NRGBA{R: 31, G: 10, B: 10, A: 255} // #1f0a0a
 }
 
 // StatusInfoBg returns a tinted background for info status
 func (c Colors) StatusInfoBg(variant fyne.ThemeVariant) color.Color {
-	if activeTheme != nil && activeTheme.settings != nil {
-		// Use info color with alpha for background tint
-		if variant == theme.VariantLight {
-			return color.NRGBA{R: 232, G: 240, B: 254, A: 255}
-		}
-		return color.NRGBA{R: 25, G: 35, B: 50, A: 255}
-	}
 	if variant == theme.VariantLight {
-		return color.NRGBA{R: 232, G: 240, B: 254, A: 255}
+		return color.NRGBA{R: 218, G: 234, B: 255, A: 255}
 	}
-	return color.NRGBA{R: 25, G: 35, B: 50, A: 255}
+	return color.NRGBA{R: 13, G: 31, B: 58, A: 255} // #0d1f3a
 }
 
 // AppColors provides easy access to theme colors

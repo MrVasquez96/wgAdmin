@@ -51,7 +51,13 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	variant := customTheme.CurrentVariant()
 
 	// Title
-	title := canvas.NewText(c.iface.Name, theme.ForegroundColor())
+	var titleColor color.Color
+	if c.iface.Active {
+		titleColor = theme.PrimaryColor()
+	} else {
+		titleColor = theme.ForegroundColor()
+	}
+	title := canvas.NewText(c.iface.Name, titleColor)
 	title.TextStyle = fyne.TextStyle{Bold: true}
 	title.TextSize = 20
 
@@ -69,7 +75,6 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	statusDot := canvas.NewCircle(statusColor)
 	statusLabel := widget.NewLabel(statusText)
 	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
-	statusBadge := container.NewHBox(statusDot, statusLabel)
 
 	// IP address
 	ipLabel := widget.NewLabel(c.lang.Tf(lang.Card_ip_label, c.iface.IP))
@@ -139,35 +144,21 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 	})
 	deleteBtn.Importance = widget.DangerImportance
 
-	// Layout
-	statusContent := container.NewHBox(
-		statusBadge,
+	// Layout: left info column, right button column (3 rows)
+	statusBadge := container.NewHBox(statusDot, statusLabel)
+	infoCol := container.NewVBox(
+		container.NewHBox(statusBadge, title),
 		ipLabel,
 	)
-	leftContent := container.NewVBox(
-		title,
-		statusContent,
-	)
-
-	rightContent := container.NewHBox(
-		layout.NewSpacer(),
-		toggleBtn,
-		scanBtn,
-		editPeersBtn,
-		editBtn,
-		deleteBtn,
-	)
-
-	topRow := container.NewBorder(
-		nil, nil,
-		leftContent,
-		rightContent,
-	)
-
-	cardContent := container.NewVBox(topRow)
 	if pubKeyRow != nil {
-		cardContent.Add(pubKeyRow)
+		infoCol.Add(pubKeyRow)
 	}
+
+	scanPeersRow := container.NewHBox(scanBtn, editPeersBtn)
+	editDeleteRow := container.NewHBox(editBtn, deleteBtn)
+	btnCol := container.NewVBox(toggleBtn, scanPeersRow, editDeleteRow)
+
+	cardContent := container.NewBorder(nil, nil, infoCol, btnCol)
 
 	// Card background
 	var bgColor color.Color
@@ -179,13 +170,23 @@ func (c *InterfaceCard) buildCard() *fyne.Container {
 
 	// Shadow layer for depth
 	shadow := canvas.NewRectangle(customTheme.AppColors.CardElevation(variant))
-	shadow.CornerRadius = 12
+	shadow.CornerRadius = 16
 
 	bg := canvas.NewRectangle(bgColor)
-	bg.CornerRadius = 12
+	bg.CornerRadius = 16
 	bg.StrokeColor = customTheme.AppColors.Border(variant)
-	bg.StrokeWidth = 1
+	bg.StrokeWidth = 1.5
+
 	padded := container.NewPadded(cardContent)
+
+	// Active tunnel: neon accent bar on the left edge
+	if c.iface.Active {
+		accentBar := canvas.NewRectangle(customTheme.AppColors.Active(variant))
+		accentBar.CornerRadius = 2
+		accentBarContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(3, 0)), accentBar)
+		inner := container.NewBorder(nil, nil, accentBarContainer, nil, padded)
+		return container.NewStack(shadow, bg, inner)
+	}
 	return container.NewStack(shadow, bg, padded)
 }
 

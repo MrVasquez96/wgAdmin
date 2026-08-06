@@ -1,4 +1,4 @@
-	package main
+package main
 
 import (
 	"bufio"
@@ -38,9 +38,46 @@ func main() {
 	}
 	defer out.Close()
 
+	// 1. Open the English source file
+	tmp_file, err := os.Open(sourceFile)
+	if err != nil {
+		fmt.Printf("Error: Could not open %s. Make sure you are running this in the correct directory.\n", sourceFile)
+		return
+	}
+	scanner_tmp := bufio.NewScanner(tmp_file)
+	inMapw:= false
+	count:=0
+	for scanner_tmp.Scan() {
+		line := scanner_tmp.Text()
+		// Look for the start of the English map
+		if strings.Contains(line, "var englishTranslations = Translations{") {
+			inMapw = true
+			// Write the file header for the new language file
+			out.WriteString("package lang\n\n")
+			out.WriteString(fmt.Sprintf("var %sTranslations = Translations{\n", langPrefix))
+			continue
+		}
+
+		if !inMapw {
+			// Skip everything above the map (type definitions, global vars, etc.)
+			continue
+		}
+
+		// Look for the end of the map
+		if strings.HasPrefix(strings.TrimSpace(line), "}") {
+			out.WriteString("}\n")
+			break 
+		}
+		if strings.Contains(line, ":") {
+				count++
+		}
+
+	}
+	tmp_file.Close()
+	
 	scanner := bufio.NewScanner(file)
 	inMap := false
-
+	translation_num := 0
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -80,8 +117,8 @@ func main() {
 			englishText := line[firstQuote+1 : lastQuote]
 			prefix := line[:firstQuote]   // The key and indentation (e.g., "    Common_save:   ")
 			suffix := line[lastQuote+1:]  // The trailing comma and any inline comments
-
-			fmt.Printf("\nEnglish: %s\n", englishText)
+			translation_num++
+			fmt.Printf("\n[%d/%d]English: %s\n",translation_num,count ,englishText)
 			fmt.Print("Translation (leave empty to keep English): ")
 			
 			translation, _ := reader.ReadString('\n')

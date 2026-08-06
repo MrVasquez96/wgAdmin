@@ -74,7 +74,7 @@ const (
 	DefaultAutoRefreshEnabled  = false
 	DefaultAutoRefreshSecs     = 5
 	DefaultConfirmBeforeDelete = true
-	DefaultThemeVariant        = "system"
+	DefaultThemeVariant        = "dark"
 	DefaultScanWorkers         = 100
 	DefaultScanTimeoutSecs     = 2
 	DefaultPrivilegeEscalation = "none"
@@ -83,47 +83,47 @@ const (
 	DefaultLanguage            = "english"
 	DefaultAccentColor         = "#1a73e8" // Deprecated: use DefaultLightAccentColor
 
-	// Light mode color defaults - Material Design inspired
-	DefaultLightAccentColor         = "#1a73e8" // Google Blue
-	DefaultLightBackgroundColor     = "#f8f9fa" // Very light gray
-	DefaultLightSurfaceColor        = "#ffffff" // White
-	DefaultLightTextPrimaryColor    = "#202124" // Very dark gray
-	DefaultLightTextSecondaryColor  = "#5f6368" // Medium gray
-	DefaultLightTextDisabledColor   = "#9e9e9e" // Light gray
-	DefaultLightBorderColor         = "#dadce0" // Border gray
-	DefaultLightSuccessColor        = "#34a853" // Green
-	DefaultLightErrorColor          = "#ea4335" // Red
-	DefaultLightWarningColor        = "#fbbc05" // Amber
-	DefaultLightInfoColor           = "#4285f4" // Light blue
-	DefaultLightInputBackgroundColor = "#ffffff" // White
-	DefaultLightInputBorderColor    = "#dadce0" // Border gray
-	DefaultLightHoverColor          = "#f1f5fb" // Soft blue tint
-	DefaultLightPressedColor        = "#e2edfa" // Deeper blue tint
-	DefaultLightSelectionColor      = "#cce0ff" // Light blue selection
-	DefaultLightHeaderBackgroundColor = "#ffffff" // White
-	DefaultLightMenuBackgroundColor = "#ffffff" // White
-	DefaultLightScrollbarColor      = "#a0a0a0" // Medium gray
+	// Light mode color defaults - Clean professional dark-on-light
+	DefaultLightAccentColor          = "#0a6640" // Dark forest green
+	DefaultLightBackgroundColor      = "#f0f2f5" // Blue-tinted light gray
+	DefaultLightSurfaceColor         = "#ffffff" // White cards
+	DefaultLightTextPrimaryColor     = "#1c1e21" // Near-black
+	DefaultLightTextSecondaryColor   = "#5c6370" // Medium gray
+	DefaultLightTextDisabledColor    = "#9e9e9e" // Light gray
+	DefaultLightBorderColor          = "#d0d7de" // Soft border
+	DefaultLightSuccessColor         = "#2d9e52" // Darker green
+	DefaultLightErrorColor           = "#d73a49" // Accessible red
+	DefaultLightWarningColor         = "#9a6700" // Dark amber
+	DefaultLightInfoColor            = "#0969da" // Accessible blue
+	DefaultLightInputBackgroundColor = "#ffffff"  // White
+	DefaultLightInputBorderColor     = "#d0d7de"  // Matches border
+	DefaultLightHoverColor           = "#eaeef2"  // Subtle gray hover
+	DefaultLightPressedColor         = "#dde1e7"  // Deeper hover
+	DefaultLightSelectionColor       = "#b6d4fb"  // Light blue selection
+	DefaultLightHeaderBackgroundColor = "#1a2332" // Dark steel (same as dark mode)
+	DefaultLightMenuBackgroundColor  = "#ffffff"  // White menus
+	DefaultLightScrollbarColor       = "#8c959f"  // Accessible gray
 
-	// Dark mode color defaults - Material Design inspired
-	DefaultDarkAccentColor         = "#8ab4f8" // Lighter blue
-	DefaultDarkBackgroundColor     = "#121212" // Very dark gray
-	DefaultDarkSurfaceColor        = "#1e1e1e" // Dark gray
-	DefaultDarkTextPrimaryColor    = "#e8eaed" // Light gray
-	DefaultDarkTextSecondaryColor  = "#9aa0a6" // Medium gray
-	DefaultDarkTextDisabledColor   = "#757575" // Darker gray
-	DefaultDarkBorderColor         = "#3c4043" // Dark border
-	DefaultDarkSuccessColor        = "#81c995" // Light green
-	DefaultDarkErrorColor          = "#f28b82" // Light red
-	DefaultDarkWarningColor        = "#fdd663" // Light yellow
-	DefaultDarkInfoColor           = "#8ab4f8" // Light blue
-	DefaultDarkInputBackgroundColor = "#1e1e1e" // Dark gray
-	DefaultDarkInputBorderColor    = "#3c4043" // Dark border
-	DefaultDarkHoverColor          = "#373737" // Lighter dark gray
-	DefaultDarkPressedColor        = "#464646" // Even lighter gray
-	DefaultDarkSelectionColor      = "#2d4a6f" // Dark blue selection
-	DefaultDarkHeaderBackgroundColor = "#1e1e1e" // Dark gray
-	DefaultDarkMenuBackgroundColor = "#282828" // Slightly lighter dark
-	DefaultDarkScrollbarColor      = "#5a5a5a" // Medium gray
+	// Dark mode color defaults - Dark Cyber/Tech (WireGuard brand aesthetic)
+	DefaultDarkAccentColor          = "#00d472" // Neon green — WireGuard brand
+	DefaultDarkBackgroundColor      = "#0d1117" // Near-black (GitHub Dark)
+	DefaultDarkSurfaceColor         = "#161b22" // Dark navy panel
+	DefaultDarkTextPrimaryColor     = "#e6edf3" // Near-white
+	DefaultDarkTextSecondaryColor   = "#8b949e" // Muted gray
+	DefaultDarkTextDisabledColor    = "#484f58" // Dark disabled
+	DefaultDarkBorderColor          = "#21262d" // Subtle dark border
+	DefaultDarkSuccessColor         = "#3fb950" // Bright green
+	DefaultDarkErrorColor           = "#f85149" // Bright red
+	DefaultDarkWarningColor         = "#d29922" // Amber
+	DefaultDarkInfoColor            = "#58a6ff" // Bright blue
+	DefaultDarkInputBackgroundColor = "#21262d" // Input field bg
+	DefaultDarkInputBorderColor     = "#30363d" // Input field border
+	DefaultDarkHoverColor           = "#1c2128" // Hover state
+	DefaultDarkPressedColor         = "#262c36" // Pressed state
+	DefaultDarkSelectionColor       = "#1f3a5f" // Selection tint
+	DefaultDarkHeaderBackgroundColor = "#1a2332" // Dark steel header
+	DefaultDarkMenuBackgroundColor  = "#161b22"  // Same as surface
+	DefaultDarkScrollbarColor       = "#484f58"  // Visible scrollbar
 )
 
 // AppSettings holds all application settings.

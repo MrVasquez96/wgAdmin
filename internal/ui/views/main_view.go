@@ -66,9 +66,9 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 	// Title — use the custom theme so forced variant is respected
 	customT := wgtheme.NewWGAdminTheme(v.settings)
 	variant := wgtheme.CurrentVariant()
-	v.headerTitle = canvas.NewText(meta.Name, customT.Color(theme.ColorNameForeground, variant))
+	v.headerTitle = canvas.NewText(meta.Name, customT.Color(theme.ColorNamePrimary, variant))
 	v.headerTitle.TextStyle = fyne.TextStyle{Bold: true}
-	v.headerTitle.TextSize = 28
+	v.headerTitle.TextSize = 32
 
 	// Import tunnel
 	importBtn := v.newImportButton()
@@ -123,9 +123,11 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 	rightHeader := container.NewHBox(filterContainer, importBtn, addBtn, backupsBtn, v.autoRefresh, refreshBtn, settingsBtn)
 	headerContent := container.NewBorder(nil, nil, leftHeader, rightHeader)
 	v.headerBg = canvas.NewRectangle(customT.Color(theme.ColorNameHeaderBackground, variant))
+	separatorLine := canvas.NewRectangle(customT.Color(theme.ColorNamePrimary, variant))
+	separatorLine.SetMinSize(fyne.NewSize(0, 1))
 	header := container.NewVBox(
 		container.NewStack(v.headerBg, container.NewPadded(headerContent)),
-		widget.NewSeparator(),
+		separatorLine,
 	)
 
 	// Scrollable list
@@ -501,7 +503,7 @@ func (v *MainView) applySettings(updated *settings.AppSettings) {
 
 	// Update header colors to match new theme variant
 	variant := wgtheme.CurrentVariant()
-	v.headerTitle.Color = newTheme.Color(theme.ColorNameForeground, variant)
+	v.headerTitle.Color = newTheme.Color(theme.ColorNamePrimary, variant)
 	v.headerTitle.Refresh()
 	v.headerBg.FillColor = newTheme.Color(theme.ColorNameHeaderBackground, variant)
 	v.headerBg.Refresh()

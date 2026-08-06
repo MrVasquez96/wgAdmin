@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"wgAdmin/internal/settings"
@@ -12,11 +13,19 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"github.com/MrVasquez96/go-wg/wg"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Llongfile)
+	log.SetOutput(&lumberjack.Logger{
+		Filename:   "/var/log/wgadmin.log",
+		MaxSize:    5, // megabytes
+		MaxBackups: 3,
+		MaxAge:     28, //days
+	})
 	a := app.NewWithID("com.wireguard.manager")
-	//
+
 	meta := a.Metadata()
 	cfg := settings.Load(a.Preferences())
 
