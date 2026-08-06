@@ -249,7 +249,14 @@ func (v *MainView) rebuild() {
 				v.toggleInterface(name, activate)
 			},
 			OnScan: func(name, ip string) {
-				scanView := NewScanViewWithProgress(name, ip, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs, v.lang)
+				// Scan every network routed through the tunnel, not just the
+				// interface's own /24 - hub-and-spoke setups reach further.
+				var plan ScanPlan
+				cfg, err := config.ParseConfig(v.ctrl.GetConfigPath(name))
+				if err == nil {
+					plan = PlanScan(cfg, ip)
+				}
+				scanView := NewScanViewWithProgress(name, ip, plan, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs, v.lang)
 				scanView.Show()
 			},
 			OnEdit: func(name string) {

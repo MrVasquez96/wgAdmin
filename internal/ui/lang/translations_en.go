@@ -236,6 +236,16 @@ var englishTranslations = Translations{
 	Scan_no_open_ports:  "No open ports",
 	Scan_ports_label:    "Ports: %s",
 
+	Scan_all_networks:      "All routed networks (%d)",
+	Scan_wide_option:       "%s (find active subnets)",
+	Scan_skipped_networks:  "Not scanned, too large: %s",
+	Scan_rescan:            "Rescan",
+	Scan_phase_discovering: "Looking for active subnets in %s...",
+	Scan_phase_scanning:    "Scanning %s...",
+	Scan_no_active_subnets: "No active subnets found.",
+	Scan_invalid_network:   "%q is not a valid network (example: 10.1.32.0/24)",
+	Scan_network_too_large: "%s is too large to scan - use a smaller network",
+
 	// ===== SSH terminal =====
 	Ssh_connect_btn:             "Connect SSH",
 	Ssh_dialog_title:            "SSH Connection",

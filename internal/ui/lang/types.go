@@ -2,13 +2,13 @@ package lang
 
 // Global translations map - populated by translation files
 var languages = map[string]Translations{
-	"en":    englishTranslations,
+	"en": englishTranslations,
 	//"no-nb": norwegianTranslations,
 }
 
 // AvailableLanguages maps language codes to display names for UI
 var AvailableLanguages = map[string]string{
-	"en":    "English",
+	"en": "English",
 	//"no-nb": "Norsk Bokmål ",
 }
 
@@ -238,20 +238,29 @@ const (
 	Backup_error_restore         = backup_ + "error_restore"
 
 	// ===== Scan view =====
-	scan_               = "scan."
-	Scan_title          = scan_ + "title"
-	Scan_label_scanning = scan_ + "label_scanning"
-	Scan_label_progress = scan_ + "label_progress"
-	Scan_progress_pct   = scan_ + "progress_pct"
-	Scan_progress_100   = scan_ + "progress_100"
-	Scan_result_unknown = scan_ + "result_unknown"
-	Scan_no_open_ports  = scan_ + "no_open_ports"
-	Scan_ports_label    = scan_ + "ports_label"
+	scan_                  = "scan."
+	Scan_title             = scan_ + "title"
+	Scan_label_scanning    = scan_ + "label_scanning"
+	Scan_label_progress    = scan_ + "label_progress"
+	Scan_progress_pct      = scan_ + "progress_pct"
+	Scan_progress_100      = scan_ + "progress_100"
+	Scan_result_unknown    = scan_ + "result_unknown"
+	Scan_no_open_ports     = scan_ + "no_open_ports"
+	Scan_ports_label       = scan_ + "ports_label"
+	Scan_all_networks      = scan_ + "all_networks"
+	Scan_wide_option       = scan_ + "wide_option"
+	Scan_skipped_networks  = scan_ + "skipped_networks"
+	Scan_rescan            = scan_ + "rescan"
+	Scan_phase_discovering = scan_ + "phase_discovering"
+	Scan_phase_scanning    = scan_ + "phase_scanning"
+	Scan_no_active_subnets = scan_ + "no_active_subnets"
+	Scan_invalid_network   = scan_ + "invalid_network"
+	Scan_network_too_large = scan_ + "network_too_large"
 
 	// ===== SSH terminal =====
 	ssh_                        = "ssh."
-	Ssh_dialog_label_ssh		= ssh_ + "dialog_label_ssh"
-	Ssh_dialog_placeholder_ssh	= ssh_ + "dialog_placeholder_ssh"
+	Ssh_dialog_label_ssh        = ssh_ + "dialog_label_ssh"
+	Ssh_dialog_placeholder_ssh  = ssh_ + "dialog_placeholder_ssh"
 	Ssh_connect_btn             = ssh_ + "connect_btn"
 	Ssh_dialog_title            = ssh_ + "dialog_title"
 	Ssh_dialog_label_user       = ssh_ + "dialog_label_user"

@@ -236,6 +236,16 @@ var norwegianTranslations = Translations{
 	Scan_no_open_ports:  "Ingen åpne porter",
 	Scan_ports_label:    "Porter: %s",
 
+	Scan_all_networks:      "Alle rutede nettverk (%d)",
+	Scan_wide_option:       "%s (finn aktive subnett)",
+	Scan_skipped_networks:  "Ikke skannet, for stort: %s",
+	Scan_rescan:            "Skann på nytt",
+	Scan_phase_discovering: "Leter etter aktive subnett i %s ...",
+	Scan_phase_scanning:    "Skanner %s ...",
+	Scan_no_active_subnets: "Fant ingen aktive subnett.",
+	Scan_invalid_network:   "%q er ikke et gyldig nettverk (eksempel: 10.1.32.0/24)",
+	Scan_network_too_large: "%s er for stort å skanne – bruk et mindre nettverk",
+
 	// ===== SSH terminal =====
 	Ssh_connect_btn:             "Koble til SSH",
 	Ssh_dialog_title:            "SSH-tilkobling",
