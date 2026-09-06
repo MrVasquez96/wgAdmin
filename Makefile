@@ -1,6 +1,6 @@
 .PHONY: all rebuild build install uninstall
 
-FYNE    := /home/thomas/go/bin/fyne
+FYNE    := /home/$(USER)/go/bin/fyne
 APPID   := com.wireguard.manager
 EXEC    := wgAdmin
 ICON    := com.wireguard.manager.png
