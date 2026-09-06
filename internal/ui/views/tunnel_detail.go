@@ -14,6 +14,7 @@ import (
 
 	"wgAdmin/internal/ui/lang"
 	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgcfg"
 	"wgAdmin/internal/wgstat"
 	"wgAdmin/internal/wgwidget"
 
@@ -30,6 +31,7 @@ type detailActions struct {
 	OnConfig func(name string)
 	OnDelete func(name string)
 	OnCopy   func(label, value string)
+	OnPeerQR func(tunnel, publicKey string)
 	OnNew    func()
 	OnImport func()
 }
@@ -96,7 +98,7 @@ func (d *tunnelDetail) build(iface config.Interface, cfg *config.Config,
 
 	sections = append(sections,
 		wgwidget.SectionHeader(d.lang.T(lang.Detail_section_peers)),
-		d.peers(cfg, dev, live),
+		d.peers(iface, cfg, dev, live),
 	)
 
 	if routes := d.routes(cfg); routes != nil {
@@ -272,8 +274,11 @@ func (d *tunnelDetail) interfaceGrid(iface config.Interface, cfg *config.Config,
 			}
 			address = strings.Join(parts, ", ")
 		}
-		if cfg.PublicEndpoint != "" {
-			endpoint = cfg.PublicEndpoint
+		// The tunnel's own endpoint when it has one, plus any peer that dials
+		// somewhere else — a config with a second gateway or a per-peer port
+		// has more than one answer, and showing only the first would hide it.
+		if eps := wgcfg.Endpoints(cfg); len(eps) > 0 {
+			endpoint = strings.Join(eps, ", ")
 		}
 		if cfg.Interface.MTU > 0 {
 			mtu = strconv.Itoa(cfg.Interface.MTU)
@@ -296,6 +301,11 @@ func (d *tunnelDetail) interfaceGrid(iface config.Interface, cfg *config.Config,
 	// The running port is authoritative when the tunnel is up.
 	if live && dev.ListenPort > 0 {
 		port = strconv.Itoa(dev.ListenPort)
+	}
+	// wg-quick assigns a port when the config leaves it unset, so a bare dash
+	// reads as missing data when the truth is "chosen at start".
+	if port == wgstat.Dash && cfg != nil {
+		port = d.lang.T(lang.Detail_port_auto)
 	}
 
 	pubKey := iface.PublicKey
@@ -333,7 +343,10 @@ func (d *tunnelDetail) interfaceGrid(iface config.Interface, cfg *config.Config,
 }
 
 // peers renders the live peer table, or an explanation when there are none.
-func (d *tunnelDetail) peers(cfg *config.Config, dev wgstat.Device, live bool) fyne.CanvasObject {
+//
+// Selecting a row offers that peer's client config, so a QR code can be shown
+// whenever it is needed rather than only in the session that created the peer.
+func (d *tunnelDetail) peers(iface config.Interface, cfg *config.Config, dev wgstat.Device, live bool) fyne.CanvasObject {
 	var configured []config.PeerConfig
 	if cfg != nil {
 		configured = cfg.Peers
@@ -345,8 +358,14 @@ func (d *tunnelDetail) peers(cfg *config.Config, dev wgstat.Device, live bool) f
 
 	d.peerRows = buildPeerRows(configured, dev, live, d.lang)
 
-	table := newPeerTable(&d.peerRows, d.lang, nil)
-	return fixedHeight(table, peerTableHeight(len(d.peerRows)))
+	table := newPeerTable(&d.peerRows, d.lang, func(publicKey string) {
+		d.actions.OnPeerQR(iface.Name, publicKey)
+	})
+
+	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXS),
+		fixedHeight(table, peerTableHeight(len(d.peerRows))),
+		formHint(d.lang.T(lang.Detail_peers_hint)),
+	)
 }
 
 // routes summarises every network reachable through the tunnel, which is the

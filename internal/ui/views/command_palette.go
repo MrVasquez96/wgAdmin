@@ -90,6 +90,7 @@ func (v *MainView) commands() []command {
 		{l.T(lang.Common_refresh), actions, "Ctrl+R", wgtheme.IconRefresh, v.Refresh},
 		{l.T(lang.Main_backups), actions, "Ctrl+B", wgtheme.IconFolder, v.showBackupsDialog},
 		{l.T(lang.Common_settings), actions, "Ctrl+,", wgtheme.IconSettings, v.showSettings},
+		{v.fullscreenCommandTitle(), actions, "F11", wgtheme.IconFullscreen, v.toggleFullscreen},
 		{l.T(lang.Shortcuts_title), actions, "", wgtheme.IconKeyboard, v.showShortcuts},
 	}
 
@@ -129,6 +130,15 @@ func (v *MainView) commands() []command {
 	}
 
 	return cmds
+}
+
+// fullscreenCommandTitle names the action by what it does next, so the palette
+// offers a way out of fullscreen rather than a way further in.
+func (v *MainView) fullscreenCommandTitle() string {
+	if v.window.FullScreen() {
+		return v.lang.T(lang.Main_exit_fullscreen)
+	}
+	return v.lang.T(lang.Main_enter_fullscreen)
 }
 
 // matchCommands filters and ranks commands against a query. Matching falls
@@ -286,6 +296,7 @@ func (v *MainView) showShortcuts() {
 		{"Ctrl+G", l.T(lang.Shortcuts_config)},
 		{"Ctrl+S", l.T(lang.Shortcuts_scan)},
 		{"Space", l.T(lang.Shortcuts_toggle)},
+		{"F11", l.T(lang.Shortcuts_fullscreen)},
 		{"Esc", l.T(lang.Shortcuts_close)},
 	}
 

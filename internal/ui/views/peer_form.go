@@ -28,8 +28,13 @@ type PeerForm struct {
 	publicKeyEntry           *widget.Entry
 	publicKeyLabel           *widget.Label
 	allowedIPsEntry          *widget.Entry
+	endpointEntry            *widget.Entry
 	persistentKeepaliveEntry *widget.Entry
 	presharedKeyEntry        *widget.Entry
+
+	// tunnelEndpoint is the tunnel-wide default, shown as this field's
+	// placeholder so it is obvious what an empty endpoint will resolve to.
+	tunnelEndpoint string
 
 	generatedPrivateKey string
 
@@ -38,16 +43,20 @@ type PeerForm struct {
 	onCancel func()
 }
 
-// NewPeerForm creates a new peer form
-func NewPeerForm(existing *config.PeerConfig, onSave func(config.PeerConfig, string), onCancel func(), language *lang.Language) *PeerForm {
+// NewPeerForm creates a new peer form. tunnelEndpoint is the tunnel's own
+// endpoint, used as the default this peer inherits when it sets none of its
+// own.
+func NewPeerForm(existing *config.PeerConfig, tunnelEndpoint string, onSave func(config.PeerConfig, string), onCancel func(), language *lang.Language) *PeerForm {
 	f := &PeerForm{
 		nameEntry:                widget.NewEntry(),
 		privateKeyEntry:          widget.NewEntry(),
 		publicKeyEntry:           widget.NewEntry(),
 		publicKeyLabel:           widget.NewLabel(""),
 		allowedIPsEntry:          widget.NewEntry(),
+		endpointEntry:            widget.NewEntry(),
 		persistentKeepaliveEntry: widget.NewEntry(),
 		presharedKeyEntry:        widget.NewEntry(),
+		tunnelEndpoint:           strings.TrimSpace(tunnelEndpoint),
 		lang:                     language,
 		onSave:                   onSave,
 		onCancel:                 onCancel,
@@ -59,6 +68,14 @@ func NewPeerForm(existing *config.PeerConfig, onSave func(config.PeerConfig, str
 	f.allowedIPsEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_allowed_ips))
 	f.persistentKeepaliveEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_keepalive))
 	f.presharedKeyEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_preshared))
+
+	// Spelling out the inherited value beats a generic example: it answers
+	// "what happens if I leave this empty" without a trip to the tunnel form.
+	if f.tunnelEndpoint != "" {
+		f.endpointEntry.SetPlaceHolder(language.Tf(lang.Peer_placeholder_endpoint_default, f.tunnelEndpoint))
+	} else {
+		f.endpointEntry.SetPlaceHolder(language.T(lang.Peer_placeholder_endpoint))
+	}
 
 	f.privateKeyEntry.OnChanged = func(s string) {
 		f.updatePublicKey()
@@ -73,6 +90,7 @@ func NewPeerForm(existing *config.PeerConfig, onSave func(config.PeerConfig, str
 			ips[i] = ip.String()
 		}
 		f.allowedIPsEntry.SetText(strings.Join(ips, ", "))
+		f.endpointEntry.SetText(existing.Endpoint)
 
 		if existing.PersistentKeepalive > 0 {
 			f.persistentKeepaliveEntry.SetText(strconv.Itoa(existing.PersistentKeepalive))
@@ -143,8 +161,10 @@ func (f *PeerForm) Show(parent fyne.Window) {
 		),
 
 		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_network)),
+		formHint(f.lang.T(lang.Peer_endpoint_hint)),
 		widget.NewForm(
 			widget.NewFormItem(f.lang.T(lang.Peer_label_allowed_ips_server), f.allowedIPsEntry),
+			widget.NewFormItem(f.lang.T(lang.Peer_label_endpoint), f.endpointEntry),
 			widget.NewFormItem(f.lang.T(lang.Peer_label_keepalive), f.persistentKeepaliveEntry),
 		),
 	)
@@ -216,6 +236,15 @@ func (f *PeerForm) validate() (config.PeerConfig, []error) {
 			return peer, []error{wg.ValidationError{Field: "Peer.AllowedIPs", Message: f.lang.Tf(lang.Error_invalid_cidr_value, cidr)}}
 		}
 		peer.AllowedIPs = append(peer.AllowedIPs, *ipNet)
+	}
+
+	// An endpoint here overrides the tunnel's; an empty field means "inherit",
+	// so the peer keeps whatever the tunnel resolves to at generation time.
+	if endpoint := strings.TrimSpace(f.endpointEntry.Text); endpoint != "" {
+		if !wg.ValidateEndpoint(endpoint) {
+			return peer, []error{wg.ValidationError{Field: "Peer.Endpoint", Message: f.lang.T(lang.Error_invalid_endpoint)}}
+		}
+		peer.Endpoint = endpoint
 	}
 
 	if f.persistentKeepaliveEntry.Text != "" {

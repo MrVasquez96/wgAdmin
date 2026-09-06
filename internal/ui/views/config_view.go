@@ -12,10 +12,10 @@ import (
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
 	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgcfg"
 	"wgAdmin/internal/wgwidget"
 
 	"github.com/MrVasquez96/go-wg/wg"
-	"github.com/MrVasquez96/go-wg/wg/config"
 )
 
 // ConfigView shows a tunnel's .conf file as it is on disk, and optionally lets
@@ -153,26 +153,12 @@ func (c *ConfigView) revert() {
 
 // save validates the edited text before writing. Parsing goes through the same
 // code path the rest of the app uses, so a file that saves here is a file the
-// app can load — a syntax error never reaches disk.
+// app can load — a syntax error never reaches disk, and an endpoint edited by
+// hand survives the trip back out through the writer.
 func (c *ConfigView) save() {
 	text := c.editor.Text
 
-	tmp, err := os.CreateTemp("", "wgadmin-*.conf")
-	if err != nil {
-		helpers.ShowError(err, c.win)
-		return
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmp.WriteString(text); err != nil {
-		tmp.Close()
-		helpers.ShowError(err, c.win)
-		return
-	}
-	tmp.Close()
-
-	parsed, err := config.ParseConfig(tmpPath)
+	parsed, err := wgcfg.LoadString(text)
 	if err != nil {
 		helpers.ShowError(errors.New(c.lang.Tf(lang.Config_invalid, err.Error())), c.win)
 		return

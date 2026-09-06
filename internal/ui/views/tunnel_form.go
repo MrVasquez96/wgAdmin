@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
 	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgcfg"
 	"wgAdmin/internal/wgstat"
 	"wgAdmin/internal/wgwidget"
 
@@ -52,6 +54,11 @@ type TunnelForm struct {
 	peersList       *widget.List
 	peerPrivateKeys map[string]string
 
+	// storedKeys holds the private keys recovered from client configs written
+	// in earlier sessions, read once so the peer list does not re-scan the
+	// directory on every row it draws.
+	storedKeys map[string]string
+
 	// Callbacks
 	onSave   func(name string, config *config.Config) error
 	onCancel func()
@@ -59,17 +66,16 @@ type TunnelForm struct {
 
 // NewTunnelForm creates a new tunnel form
 func NewTunnelForm(parent fyne.Window, ctrl *wg.WG, existingName string, existingConfig *config.Config, onSave func(string, *config.Config) error, onCancel func(), clientConfigDir string, language *lang.Language) *TunnelForm {
-	tunnelName := existingName
+	// The interface name is the file's name. The config's own Name field is a
+	// display string go-wg builds as "[wg0] Public key: …", so using it here put
+	// that whole line in the window title.
 	isEdit := existingName != ""
-	if isEdit {
-		tunnelName = existingConfig.Name
-	}
 	f := &TunnelForm{
 		window:              parent,
 		ctrl:                ctrl,
 		lang:                language,
-		isEdit:              existingName != "",
-		name:                tunnelName,
+		isEdit:              isEdit,
+		name:                existingName,
 		clientConfigDir:     clientConfigDir,
 		nameEntry:           widget.NewEntry(),
 		privateKeyEntry:     widget.NewEntry(),
@@ -284,6 +290,10 @@ func (f *TunnelForm) ShowPeers() {
 	win := fyne.CurrentApp().NewWindow(title)
 	win.Resize(fyne.NewSize(700, 750))
 
+	// Peers created in earlier sessions can still be provisioned: their private
+	// keys live in the client configs wgAdmin wrote at the time.
+	f.storedKeys = storedPeerKeys(f.clientConfigDir, f.getTunnelName())
+
 	f.peersList = widget.NewList(
 		func() int { return len(f.peers) },
 		func() fyne.CanvasObject { return newPeerListRow() },
@@ -312,10 +322,13 @@ func (f *TunnelForm) ShowPeers() {
 				subtitle = wgstat.ShortKey(pubKeyStr)
 			}
 
-			// Provisioning is only possible for peers whose private key this
-			// session generated — that is what a client config needs.
-			_, canProvision := f.peerPrivateKeys[pubKeyStr]
-			row.Set(name, subtitle, canProvision)
+			// Provisioning needs the peer's private key: either one generated in
+			// this session or the one held by the client config wgAdmin wrote
+			// when the peer was created. Both are already in memory — the list's
+			// update function runs on every scroll and must not touch the disk.
+			_, generated := f.peerPrivateKeys[pubKeyStr]
+			_, stored := f.storedKeys[pubKeyStr]
+			row.Set(name, subtitle, generated || stored)
 
 			row.onQR = func() {
 				cfg, errs := f.validate()
@@ -323,14 +336,15 @@ func (f *TunnelForm) ShowPeers() {
 					helpers.ShowError(errs[0], win)
 					return
 				}
-				ShowPeerQR(win, cfg, f.peers[id], f.peerPrivateKeys[pubKeyStr],
-					f.publicEndpointEntry.Text, f.lang)
+				req := f.qrRequestFor(id)
+				req.serverCfg = cfg
+				ShowPeerQR(win, req, f.lang)
 			}
 
 			row.onEdit = func() {
 				peerCopy := f.peers[id]
 				oldPubKey := peerCopy.PublicKey.String()
-				peerForm := NewPeerForm(&peerCopy, func(p config.PeerConfig, privateKey string) {
+				peerForm := NewPeerForm(&peerCopy, f.publicEndpointEntry.Text, func(p config.PeerConfig, privateKey string) {
 					delete(f.peerPrivateKeys, oldPubKey)
 					f.peers[id] = p
 					if privateKey != "" {
@@ -355,7 +369,7 @@ func (f *TunnelForm) ShowPeers() {
 	)
 
 	addPeerBtn := widget.NewButtonWithIcon(f.lang.T(lang.Tunnel_btn_add_peer), wgtheme.IconAdd, func() {
-		peerForm := NewPeerForm(nil, func(p config.PeerConfig, privateKey string) {
+		peerForm := NewPeerForm(nil, f.publicEndpointEntry.Text, func(p config.PeerConfig, privateKey string) {
 			f.peers = append(f.peers, p)
 			if privateKey != "" {
 				f.peerPrivateKeys[p.PublicKey.String()] = privateKey
@@ -416,26 +430,38 @@ func (f *TunnelForm) ShowPeers() {
 	win.Show()
 }
 
+// qrRequestFor describes the client config for the peer at index id. The
+// endpoint carries the form's current text rather than the saved config's, so
+// an endpoint typed but not yet saved still produces a usable QR code.
+func (f *TunnelForm) qrRequestFor(id int) qrRequest {
+	if id < 0 || id >= len(f.peers) {
+		return qrRequest{}
+	}
+	peer := f.peers[id]
+	pubKey := peer.PublicKey.String()
+
+	// A key generated in this session wins over a stored one: it is the key the
+	// peer is about to be saved with.
+	privateKey := f.peerPrivateKeys[pubKey]
+	if privateKey == "" {
+		privateKey = f.storedKeys[pubKey]
+	}
+
+	return qrRequest{
+		tunnel:     f.getTunnelName(),
+		peer:       peer,
+		privateKey: privateKey,
+		clientDir:  f.clientConfigDir,
+		endpoint:   strings.TrimSpace(f.publicEndpointEntry.Text),
+	}
+}
+
 func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.Config, win fyne.Window) {
 	if len(f.peerPrivateKeys) == 0 {
 		return
 	}
 
-	if f.publicEndpointEntry.Text == "" {
-		helpers.ShowInformation(f.lang.T(lang.Tunnel_client_configs_title),
-			f.lang.T(lang.Tunnel_client_configs_no_endpoint), win)
-		return
-	}
-
-	endpoint := f.publicEndpointEntry.Text
-	host, portStr, err := net.SplitHostPort(endpoint)
-	if err != nil {
-		helpers.ShowError(fmt.Errorf(f.lang.T(lang.Tunnel_error_invalid_endpoint), err), win)
-		return
-	}
-	port, _ := strconv.Atoi(portStr)
-
-	clientDir := filepath.Join(f.clientConfigDir, tunnelName)
+	clientDir := clientDirFor(f.clientConfigDir, tunnelName)
 	if err := os.MkdirAll(clientDir, 0755); err != nil {
 		helpers.ShowError(fmt.Errorf(f.lang.T(lang.Tunnel_error_create_client_dir), err), win)
 		return
@@ -443,11 +469,26 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 
 	clientCtrl := wg.New(clientDir)
 	var generated []string
+	var missingEndpoint []string
 
 	for _, peer := range serverCfg.Peers {
 		pubKeyStr := peer.PublicKey.String()
 		privKey, ok := f.peerPrivateKeys[pubKeyStr]
 		if !ok {
+			continue
+		}
+
+		// Each peer dials its own endpoint when it has one, so a config with a
+		// second gateway or a non-standard port no longer forces every client
+		// onto the same address.
+		endpoint := wgcfg.EndpointFor(serverCfg, peer)
+		if endpoint == "" {
+			missingEndpoint = append(missingEndpoint, peer.Name)
+			continue
+		}
+		if !wg.ValidateEndpoint(endpoint) {
+			helpers.ShowError(fmt.Errorf(f.lang.T(lang.Tunnel_error_invalid_endpoint),
+				errors.New(endpoint)), win)
 			continue
 		}
 
@@ -460,27 +501,38 @@ func (f *TunnelForm) generateClientConfigs(tunnelName string, serverCfg *config.
 			Name:                peer.Name,
 			PublicKey:           pubKeyStr,
 			AllowedIPs:          allowedIPs,
-			Endpoint:            fmt.Sprintf("%s:%d", host, port),
+			Endpoint:            endpoint,
 			PersistentKeepalive: peer.PersistentKeepalive,
 		}
 
 		clientPath := filepath.Join(clientDir, peer.Name+".conf")
-		_, err := os.Stat(clientPath)
-		if os.IsExist(err) {
+		if _, err := os.Stat(clientPath); err == nil {
+			// A stale copy would otherwise block NewClientConfig, which refuses
+			// to overwrite an existing file.
 			os.Rename(clientPath, clientPath+".bkp")
 		}
-		_, err = clientCtrl.NewClientConfig(*serverCfg, peerOpts, privKey, true)
-		if err != nil {
+		if _, err := clientCtrl.NewClientConfig(*serverCfg, peerOpts, privKey, true); err != nil {
 			helpers.ShowError(fmt.Errorf(f.lang.Tf(lang.Tunnel_error_client_config, peer.Name), err), win)
 			continue
 		}
 		generated = append(generated, clientPath)
 	}
 
+	// One report covering both outcomes: stacking two dialogs on top of each
+	// other after a save is worse than a single message that says what was
+	// written and what was not.
+	var report []string
 	if len(generated) > 0 {
 		absDir, _ := filepath.Abs(clientDir)
-		msg := f.lang.Tf(lang.Tunnel_client_configs_success, len(generated), absDir)
-		helpers.ShowInformation(f.lang.T(lang.Tunnel_client_configs_title), msg, win)
+		report = append(report, f.lang.Tf(lang.Tunnel_client_configs_success, len(generated), absDir))
+	}
+	if len(missingEndpoint) > 0 {
+		report = append(report, f.lang.Tf(lang.Tunnel_client_configs_no_endpoint,
+			strings.Join(missingEndpoint, ", ")))
+	}
+	if len(report) > 0 {
+		helpers.ShowInformation(f.lang.T(lang.Tunnel_client_configs_title),
+			strings.Join(report, "\n\n"), win)
 	}
 }
 
@@ -555,16 +607,17 @@ func (f *TunnelForm) validate() (*config.Config, []error) {
 		cfg.Interface.ListenPort = &port
 	}
 
-	if f.publicEndpointEntry.Text != "" {
-		if !wg.ValidateEndpoint(f.publicEndpointEntry.Text) {
+	// The tunnel endpoint is the default clients dial; it is not stamped onto
+	// every [Peer] section. Doing that wrote the server's own address into its
+	// peer list — which is meaningless for a hub — and made the default
+	// indistinguishable from a genuine per-peer override once saved. Peers that
+	// need their own host or port set it in the peer form; the rest inherit
+	// this value when their client config is generated.
+	if endpoint := strings.TrimSpace(f.publicEndpointEntry.Text); endpoint != "" {
+		if !wg.ValidateEndpoint(endpoint) {
 			return nil, []error{wg.ValidationError{Field: "PublicEndpoint", Message: f.lang.T(lang.Error_invalid_endpoint)}}
 		}
-		cfg.PublicEndpoint = f.publicEndpointEntry.Text
-		for i := range cfg.Peers {
-			if cfg.Peers[i].Endpoint == "" {
-				cfg.Peers[i].Endpoint = cfg.PublicEndpoint
-			}
-		}
+		cfg.PublicEndpoint = endpoint
 	}
 
 	if f.mtuEntry.Text != "" {

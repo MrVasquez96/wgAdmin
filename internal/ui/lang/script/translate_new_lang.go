@@ -45,8 +45,8 @@ func main() {
 		return
 	}
 	scanner_tmp := bufio.NewScanner(tmp_file)
-	inMapw:= false
-	count:=0
+	inMapw := false
+	count := 0
 	for scanner_tmp.Scan() {
 		line := scanner_tmp.Text()
 		// Look for the start of the English map
@@ -66,15 +66,15 @@ func main() {
 		// Look for the end of the map
 		if strings.HasPrefix(strings.TrimSpace(line), "}") {
 			out.WriteString("}\n")
-			break 
+			break
 		}
 		if strings.Contains(line, ":") {
-				count++
+			count++
 		}
 
 	}
 	tmp_file.Close()
-	
+
 	scanner := bufio.NewScanner(file)
 	inMap := false
 	translation_num := 0
@@ -98,7 +98,7 @@ func main() {
 		// Look for the end of the map
 		if strings.HasPrefix(strings.TrimSpace(line), "}") {
 			out.WriteString("}\n")
-			break 
+			break
 		}
 
 		trimLine := strings.TrimSpace(line)
@@ -115,12 +115,12 @@ func main() {
 
 		if firstQuote != -1 && lastQuote != -1 && firstQuote != lastQuote {
 			englishText := line[firstQuote+1 : lastQuote]
-			prefix := line[:firstQuote]   // The key and indentation (e.g., "    Common_save:   ")
-			suffix := line[lastQuote+1:]  // The trailing comma and any inline comments
+			prefix := line[:firstQuote]  // The key and indentation (e.g., "    Common_save:   ")
+			suffix := line[lastQuote+1:] // The trailing comma and any inline comments
 			translation_num++
-			fmt.Printf("\n[%d/%d]English: %s\n",translation_num,count ,englishText)
+			fmt.Printf("\n[%d/%d]English: %s\n", translation_num, count, englishText)
 			fmt.Print("Translation (leave empty to keep English): ")
-			
+
 			translation, _ := reader.ReadString('\n')
 			translation = strings.TrimRight(translation, "\r\n")
 

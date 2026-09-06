@@ -72,6 +72,11 @@ var (
 	IconRoute    = svgIcon("wg-route", path("M18 4a3 3 0 0 0-2.83 4H12a4 4 0 0 0 0 8h-.17A3 3 0 1 0 12 18h.17A6 6 0 0 1 12 6h3.17A3 3 0 1 0 18 4zm0 2a1 1 0 1 1-1 1 1 1 0 0 1 1-1zM6 18a1 1 0 1 1 1 1 1 1 0 0 1-1-1z"))
 	IconDoc      = svgIcon("wg-doc", path("M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"))
 	IconSearch   = svgIcon("wg-search", path("M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"))
+	// Material Symbols "fullscreen" / "fullscreen_exit": four corner brackets
+	// pointing outward, then inward.
+	IconFullscreen     = svgIcon("wg-fullscreen", path("M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"))
+	IconFullscreenExit = svgIcon("wg-fullscreen-exit", path("M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"))
+
 	IconKeyboard = svgIcon("wg-keyboard", path("M20 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zM5 8h2v2H5V8zm0 3h2v2H5v-2zm3-3h2v2H8V8zm0 3h2v2H8v-2zm-2 3h9v2H6v-2zm5-3h2v2h-2v-2zm0-3h2v2h-2V8zm3 3h2v2h-2v-2zm0-3h2v2h-2V8zm3 6h2v2h-2v-2zm0-3h2v2h-2v-2zm0-3h2v2h-2V8z"))
 )
 

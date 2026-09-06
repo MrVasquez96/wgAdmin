@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -12,6 +13,7 @@ import (
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
 	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgcfg"
 	"wgAdmin/internal/wgwidget"
 
 	"github.com/MrVasquez96/go-wg/wg"
@@ -45,14 +47,47 @@ func buildClientConfig(serverCfg *config.Config, peer config.PeerConfig, peerPri
 	return config.GenerateConfigString(&clientCfg), nil
 }
 
+// qrRequest is everything needed to rebuild a peer's client config on demand.
+//
+// The private key and the endpoint are both optional here: either can be
+// recovered from what is already on disk, and resolving them inside the dialog
+// keeps that recovery in one place instead of at every call site.
+type qrRequest struct {
+	tunnel     string
+	serverCfg  *config.Config
+	peer       config.PeerConfig
+	privateKey string // in-session key, when the pair was generated just now
+	clientDir  string // root of the generated client configs
+	endpoint   string // overrides the config's endpoint, for unsaved form edits
+}
+
+// resolve fills in whatever the caller could not supply.
+func (r qrRequest) resolve() (privateKey, endpoint string) {
+	privateKey = r.privateKey
+	if privateKey == "" {
+		privateKey = storedPeerPrivateKey(r.clientDir, r.tunnel, r.peer.PublicKey.String())
+	}
+
+	endpoint = strings.TrimSpace(r.peer.Endpoint)
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(r.endpoint)
+	}
+	if endpoint == "" {
+		endpoint = wgcfg.EndpointFor(r.serverCfg, r.peer)
+	}
+	return privateKey, endpoint
+}
+
 // ShowPeerQR displays a scannable client config for a peer.
 //
-// The peer's private key is required: a client config is useless without it,
-// and wgAdmin only holds it for peers whose keys were generated here. Peers
-// added by public key alone cannot be provisioned this way, and the dialog
-// says so rather than showing a QR that would not work.
-func ShowPeerQR(parent fyne.Window, serverCfg *config.Config, peer config.PeerConfig,
-	peerPrivateKey, endpoint string, l *lang.Language) {
+// The peer's private key is required: a client config is useless without it.
+// WireGuard servers only ever store the public half, so the key comes either
+// from this session or from the client config wgAdmin wrote when the peer was
+// created. A peer added by public key alone has neither, and the dialog says so
+// rather than showing a QR that would not work.
+func ShowPeerQR(parent fyne.Window, req qrRequest, l *lang.Language) {
+	peer := req.peer
+	peerPrivateKey, endpoint := req.resolve()
 
 	if endpoint == "" {
 		helpers.ShowInformation(l.T(lang.Qr_btn_show), l.T(lang.Qr_no_endpoint), parent)
@@ -63,7 +98,7 @@ func ShowPeerQR(parent fyne.Window, serverCfg *config.Config, peer config.PeerCo
 		return
 	}
 
-	text, err := buildClientConfig(serverCfg, peer, peerPrivateKey, endpoint)
+	text, err := buildClientConfig(req.serverCfg, peer, peerPrivateKey, endpoint)
 	if err != nil {
 		helpers.ShowError(errors.New(l.Tf(lang.Qr_error_generate, err.Error())), parent)
 		return
@@ -88,9 +123,15 @@ func ShowPeerQR(parent fyne.Window, serverCfg *config.Config, peer config.PeerCo
 		parent.Clipboard().SetContent(text)
 	})
 
+	// Naming the endpoint the code was built with is the quickest way to catch
+	// a peer that inherited the tunnel default when it needed its own.
+	endpointLine := wgwidget.DimValue(l.Tf(lang.Qr_endpoint, endpoint))
+	endpointLine.TextSize = 11
+
 	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD),
 		container.NewCenter(qr),
 		container.NewCenter(hint),
+		container.NewCenter(endpointLine),
 		container.NewCenter(warning),
 		container.NewCenter(copyBtn),
 	)

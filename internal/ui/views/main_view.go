@@ -13,6 +13,7 @@ import (
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
 	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgcfg"
 	"wgAdmin/internal/wgstat"
 	"wgAdmin/internal/wgwidget"
 
@@ -35,10 +36,11 @@ type MainView struct {
 	settings *settings.AppSettings
 	lang     *lang.Language
 
-	statusBar   *wgwidget.StatusBar
-	busyDialog  *wgwidget.BusyDialog
-	filterEntry *widget.Entry
-	autoRefresh *widget.Check
+	statusBar     *wgwidget.StatusBar
+	busyDialog    *wgwidget.BusyDialog
+	filterEntry   *widget.Entry
+	autoRefresh   *widget.Check
+	fullscreenBtn *widget.Button
 
 	sidebar     *widget.List
 	sidebarHead *canvas.Text
@@ -99,9 +101,29 @@ func (v *MainView) detailActions() detailActions {
 			v.window.Clipboard().SetContent(value)
 			v.statusBar.Flash(label, true)
 		},
+		OnPeerQR: v.showPeerQR,
 		OnNew:    v.showAddTunnelForm,
 		OnImport: v.importConfig,
 	}
+}
+
+// showPeerQR opens the client config for one peer of a tunnel, identified by
+// its public key — the only stable handle a peer has.
+func (v *MainView) showPeerQR(tunnel, publicKey string) {
+	v.withConfig(tunnel, func(cfg *config.Config) {
+		for _, peer := range cfg.Peers {
+			if peer.PublicKey.String() != publicKey {
+				continue
+			}
+			ShowPeerQR(v.window, qrRequest{
+				tunnel:    tunnel,
+				serverCfg: cfg,
+				peer:      peer,
+				clientDir: v.settings.ClientConfigDir,
+			}, v.lang)
+			return
+		}
+	})
 }
 
 // Build assembles the console layout.
@@ -157,6 +179,9 @@ func (v *MainView) buildToolbar(meta fyne.AppMetadata) fyne.CanvasObject {
 	refreshBtn := widget.NewButtonWithIcon("", wgtheme.IconRefresh, v.Refresh)
 	settingsBtn := widget.NewButtonWithIcon("", wgtheme.IconSettings, v.showSettings)
 
+	v.fullscreenBtn = widget.NewButtonWithIcon("", wgtheme.IconFullscreen, v.toggleFullscreen)
+	v.syncFullscreenButton()
+
 	v.autoRefresh.OnChanged = func(on bool) {
 		if on {
 			v.startAutoRefresh()
@@ -174,7 +199,7 @@ func (v *MainView) buildToolbar(meta fyne.AppMetadata) fyne.CanvasObject {
 		newBtn, importBtn, backupsBtn,
 		wgwidget.VHairline(),
 		container.NewCenter(v.autoRefresh),
-		refreshBtn, settingsBtn,
+		refreshBtn, v.fullscreenBtn, settingsBtn,
 	)
 
 	bar := container.NewBorder(nil, nil, brandBox, right)
@@ -252,7 +277,7 @@ func (v *MainView) Refresh() {
 		// Parse each config once per refresh, off the UI thread.
 		configs := make(map[string]*config.Config, len(interfaces))
 		for _, iface := range interfaces {
-			if cfg, cfgErr := config.ParseConfig(v.ctrl.GetConfigPath(iface.Name)); cfgErr == nil {
+			if cfg, cfgErr := wgcfg.Load(v.ctrl.GetConfigPath(iface.Name)); cfgErr == nil {
 				configs[iface.Name] = cfg
 			}
 		}
@@ -399,7 +424,7 @@ func (v *MainView) importConfig() {
 			helpers.ShowError(errors.New(v.lang.T(lang.Main_import_error_ext)), v.window)
 			return
 		}
-		cfg, err := config.ParseConfig(filePath)
+		cfg, err := wgcfg.Load(filePath)
 		if err != nil {
 			helpers.ShowError(errors.New(v.lang.Tf(lang.Main_import_error_invalid, err.Error())), v.window)
 			return
@@ -408,10 +433,11 @@ func (v *MainView) importConfig() {
 			helpers.ShowInformation(v.lang.T(lang.Main_import_validation_title),
 				v.lang.T(lang.Main_import_validation_msg), v.window)
 		}
-		name := cfg.Name
-		if name == "Unknown" {
-			name = filepath.Base(reader.URI().Name())
-		}
+
+		// The file name is the interface name — that is how wg-quick reads a
+		// config directory. The config's own Name field is a display string
+		// ("[wg0] Public key: …") and using it produced files named after it.
+		name := strings.TrimSuffix(filepath.Base(reader.URI().Name()), ".conf")
 
 		if _, statErr := os.Stat(filepath.Join(v.settings.WGConfigPath, reader.URI().Name())); statErr == nil {
 			helpers.ShowConfirm(v.lang.T(lang.Main_import_overwrite_title),
@@ -481,7 +507,7 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 
 func (v *MainView) showScan(name, ip string) {
 	var plan ScanPlan
-	if cfg, err := config.ParseConfig(v.ctrl.GetConfigPath(name)); err == nil {
+	if cfg, err := wgcfg.Load(v.ctrl.GetConfigPath(name)); err == nil {
 		plan = PlanScan(cfg, ip)
 	}
 	NewScanView(name, ip, plan, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs, v.lang).Show()
@@ -513,7 +539,7 @@ func (v *MainView) showEditPeersTunnelForm(name string) {
 
 // withConfig loads a tunnel's config and reports failures once, in one place.
 func (v *MainView) withConfig(name string, fn func(*config.Config)) {
-	cfg, err := config.ParseConfig(v.ctrl.GetConfigPath(name))
+	cfg, err := wgcfg.Load(v.ctrl.GetConfigPath(name))
 	if err != nil {
 		helpers.ShowError(fmt.Errorf(v.lang.T(lang.Main_failed_to_load_config), err), v.window)
 		return
@@ -697,6 +723,47 @@ func (v *MainView) applySettings(updated *settings.AppSettings) {
 
 	v.updateStatusChips()
 	v.Refresh()
+}
+
+// toggleFullscreen switches the window in and out of fullscreen.
+//
+// Starting fullscreen is a setting, but leaving it used to depend on knowing
+// F11 — with no window chrome and no button, anyone who did not would be stuck
+// in the app. The toolbar button is the way out that needs no prior knowledge;
+// F11 and Escape are there for people who expect them.
+func (v *MainView) toggleFullscreen() {
+	v.setFullscreen(!v.window.FullScreen())
+}
+
+// exitFullscreen leaves fullscreen and reports whether it did anything, so Esc
+// can fall through to clearing the filter when there was nothing to exit.
+func (v *MainView) exitFullscreen() bool {
+	if !v.window.FullScreen() {
+		return false
+	}
+	v.setFullscreen(false)
+	return true
+}
+
+func (v *MainView) setFullscreen(on bool) {
+	v.window.SetFullScreen(on)
+	v.syncFullscreenButton()
+}
+
+// syncFullscreenButton keeps the icon and its tooltip describing what the
+// button will do next rather than what the window currently is.
+func (v *MainView) syncFullscreenButton() {
+	if v.fullscreenBtn == nil {
+		return
+	}
+	if v.window.FullScreen() {
+		v.fullscreenBtn.SetIcon(wgtheme.IconFullscreenExit)
+		v.fullscreenBtn.Importance = widget.HighImportance
+	} else {
+		v.fullscreenBtn.SetIcon(wgtheme.IconFullscreen)
+		v.fullscreenBtn.Importance = widget.MediumImportance
+	}
+	v.fullscreenBtn.Refresh()
 }
 
 // tunnelNames lists the loaded tunnels, used by the command palette.

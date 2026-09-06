@@ -9,9 +9,14 @@ import (
 // registerShortcuts wires the keyboard map onto the main window.
 //
 // Shortcuts are registered on the canvas so they work wherever focus sits,
-// with one exception: the bare keys (Space, Esc, arrows) are handled through
-// the typed-key hook and deliberately ignored while a text field has focus, so
-// typing a space into the filter box does not toggle a tunnel.
+// with one exception: the bare keys (Space, Esc, F11, arrows) are handled
+// through the typed-key hook and deliberately ignored while a text field has
+// focus, so typing a space into the filter box does not toggle a tunnel.
+//
+// Fyne only builds a shortcut when a modifier is held, so an unmodified key
+// cannot be registered above and reaches this hook only when nothing is
+// focused. That is why leaving fullscreen has a toolbar button as well: a
+// keyboard-only escape hatch would be one stray click away from not working.
 func (v *MainView) registerShortcuts() {
 	canvas := v.window.Canvas()
 
@@ -60,7 +65,14 @@ func (v *MainView) registerShortcuts() {
 		switch ev.Name {
 		case fyne.KeySpace:
 			v.toggleSelected()
+		case fyne.KeyF11:
+			v.toggleFullscreen()
 		case fyne.KeyEscape:
+			// Leaving fullscreen is the more urgent of the two, and a filter
+			// that survives the first Esc is cleared by the second.
+			if v.exitFullscreen() {
+				return
+			}
 			v.clearFilter()
 		case fyne.KeyDown:
 			v.moveSelection(1)
