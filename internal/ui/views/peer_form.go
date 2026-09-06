@@ -7,11 +7,13 @@ import (
 
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
+	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgwidget"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/MrVasquez96/go-wg/wg"
 	"github.com/MrVasquez96/go-wg/wg/config"
@@ -105,7 +107,7 @@ func (f *PeerForm) updatePublicKey() {
 
 // Show displays the peer form dialog
 func (f *PeerForm) Show(parent fyne.Window) {
-	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T(lang.Peer_btn_generate_keys), theme.ViewRefreshIcon(), func() {
+	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T(lang.Peer_btn_generate_keys), wgtheme.IconRefresh, func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
 			helpers.ShowError(err, parent)
@@ -118,33 +120,39 @@ func (f *PeerForm) Show(parent fyne.Window) {
 		f.generatedPrivateKey = priv
 	})
 
-	copyPubKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+	copyPubKeyBtn := widget.NewButtonWithIcon("", wgtheme.IconCopy, func() {
 		text := f.publicKeyEntry.Text
 		if text != "" && text != "(invalid key)" {
 			parent.Clipboard().SetContent(text)
 		}
 	})
-	form := container.NewVBox(
-		widget.NewLabel(f.lang.T(lang.Peer_label_name)),
-		f.nameEntry,
-		widget.NewSeparator(),
-		widget.NewLabel(f.lang.T(lang.Peer_label_private_key)),
-		container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry),
-		widget.NewLabel(f.lang.T(lang.Peer_label_public_key)),
-		container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyEntry),
+	form := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
+		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_identity)),
+		widget.NewForm(
+			widget.NewFormItem(f.lang.T(lang.Peer_label_name), f.nameEntry),
+		),
 
-		widget.NewSeparator(),
-		widget.NewLabel(f.lang.T(lang.Peer_label_allowed_ips_server)),
-		f.allowedIPsEntry,
+		wgwidget.SectionHeader(f.lang.T(lang.Peer_section_keys)),
+		formHint(f.lang.T(lang.Peer_keys_hint)),
+		widget.NewForm(
+			widget.NewFormItem(f.lang.T(lang.Peer_label_private_key),
+				container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry)),
+			widget.NewFormItem(f.lang.T(lang.Peer_label_public_key),
+				container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyEntry)),
+			widget.NewFormItem(f.lang.T(lang.Peer_label_preshared_key), f.presharedKeyEntry),
+		),
 
-		widget.NewLabel(f.lang.T(lang.Peer_label_keepalive)),
-		f.persistentKeepaliveEntry,
-
-		widget.NewLabel(f.lang.T(lang.Peer_label_preshared_key)),
-		f.presharedKeyEntry,
+		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_network)),
+		widget.NewForm(
+			widget.NewFormItem(f.lang.T(lang.Peer_label_allowed_ips_server), f.allowedIPsEntry),
+			widget.NewFormItem(f.lang.T(lang.Peer_label_keepalive), f.persistentKeepaliveEntry),
+		),
 	)
 
-	d := dialog.NewCustomConfirm(f.lang.T(lang.Peer_form_title), f.lang.T(lang.Common_save), f.lang.T(lang.Common_cancel), form, func(confirmed bool) {
+	scrolled := container.NewVScroll(container.New(
+		layout.NewCustomPaddedLayout(0, wgtheme.SpaceMD, 0, wgtheme.SpaceMD), form))
+
+	d := dialog.NewCustomConfirm(f.lang.T(lang.Peer_form_title), f.lang.T(lang.Common_save), f.lang.T(lang.Common_cancel), scrolled, func(confirmed bool) {
 		if !confirmed {
 			if f.onCancel != nil {
 				f.onCancel()

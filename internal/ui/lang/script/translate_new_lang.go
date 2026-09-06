@@ -141,5 +141,5 @@ func main() {
 	}
 
 	fmt.Printf("\nTranslations file generated: '%s'.\n", outFile)
-	fmt.Printf("Resigster it in types.go to use it.\n", langPrefix)
+	fmt.Printf("Register %q in types.go to use it.\n", langPrefix)
 }

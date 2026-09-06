@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/csv"
 	"errors"
 	"net"
 	"sort"
@@ -9,13 +10,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
+	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgstat"
 	"wgAdmin/internal/wgwidget"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	scanner "github.com/MrVasquez96/go-ipscan"
@@ -33,6 +39,23 @@ type ScanView struct {
 	identities    map[string]string // IP -> what the host looks like
 	resultsMu     sync.Mutex
 	stopped       atomic.Bool
+
+	// UI handles kept so results can be repainted in place instead of the
+	// whole list being rebuilt on every hit.
+	win        fyne.Window
+	table      *widget.Table
+	countLabel *canvas.Text
+}
+
+// scanColumns defines the results table.
+var scanColumns = []struct {
+	titleKey string
+	width    float32
+}{
+	{lang.Scan_col_address, 150},
+	{lang.Scan_col_identity, 260},
+	{lang.Scan_col_ports, 260},
+	{lang.Scan_col_actions, 190},
 }
 
 // NewScanView creates a new scan view for the networks in plan (see PlanScan).
@@ -60,14 +83,17 @@ func (v *ScanView) Show() {
 	}
 
 	win := fyne.CurrentApp().NewWindow(v.lang.Tf(lang.Scan_title, v.ifaceName))
-	win.Resize(fyne.NewSize(900, 600))
+	win.Resize(fyne.NewSize(960, 640))
 	win.SetOnClosed(func() { v.stopped.Store(true) })
+	v.win = win
 
 	progress := widget.NewProgressBar()
-	progressNote := widget.NewLabel("0%")
-	statusLabel := widget.NewLabel("")
-	resultsContainer := container.NewVBox()
-	resultsScroll := container.NewVScroll(resultsContainer)
+	progress.TextFormatter = func() string { return "" } // the count carries the detail
+	progressNote := wgwidget.Value("0%")
+	statusLabel := wgwidget.DimValue("")
+	countLabel := wgwidget.Caption("")
+
+	v.table = v.buildResultsTable(win)
 
 	allOption := v.lang.Tf(lang.Scan_all_networks, len(v.plan.Direct)+len(v.plan.Wide))
 	options := []string{allOption}
@@ -78,27 +104,55 @@ func (v *ScanView) Show() {
 
 	networkSelect := widget.NewSelectEntry(options)
 	networkSelect.SetText(allOption)
-	rescanBtn := widget.NewButton(v.lang.T(lang.Scan_rescan), nil)
+
+	rescanBtn := widget.NewButtonWithIcon(v.lang.T(lang.Scan_rescan), wgtheme.IconRefresh, nil)
+	rescanBtn.Importance = widget.HighImportance
+
+	stopBtn := widget.NewButtonWithIcon(v.lang.T(lang.Scan_btn_stop), wgtheme.IconStop, func() {
+		v.stopped.Store(true)
+	})
+	stopBtn.Importance = widget.DangerImportance
+
+	exportBtn := widget.NewButtonWithIcon(v.lang.T(lang.Scan_btn_export), wgtheme.IconDownload, func() {
+		v.exportCSV(win)
+	})
+
+	controls := container.NewBorder(nil, nil,
+		wgwidget.Caption(v.lang.T(lang.Scan_label_network)),
+		container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM), stopBtn, rescanBtn, exportBtn),
+		networkSelect,
+	)
+
+	progressRow := container.NewBorder(nil, nil,
+		container.NewCenter(countLabel),
+		container.NewCenter(progressNote),
+		container.NewCenter(progress),
+	)
 
 	headerRows := []fyne.CanvasObject{
-		container.NewBorder(nil, nil,
-			widget.NewLabel(v.lang.T(lang.Scan_label_scanning)),
-			rescanBtn,
-			networkSelect,
-		),
-		container.NewPadded(container.NewBorder(nil, nil, widget.NewLabel(v.lang.T(lang.Scan_label_progress)), progressNote, progress)),
+		controls,
+		progressRow,
 		statusLabel,
 	}
 	if len(v.plan.Skipped) > 0 {
+		// Networks too large to scan are worth naming: silently ignoring
+		// 0.0.0.0/0 looks like the scanner simply missed them.
 		note := widget.NewLabel(v.lang.Tf(lang.Scan_skipped_networks, strings.Join(v.plan.Skipped, ", ")))
 		note.Wrapping = fyne.TextWrapWord
+		note.Importance = widget.LowImportance
 		headerRows = append(headerRows, note)
 	}
-	headerRows = append(headerRows, widget.NewSeparator())
-	header := container.NewVBox(headerRows...)
+	headerRows = append(headerRows, wgwidget.Hairline())
 
-	win.SetContent(container.NewPadded(container.NewBorder(header, nil, nil, nil, resultsScroll)))
+	header := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD), headerRows...)
+
+	win.SetContent(container.New(
+		layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG),
+		container.NewBorder(header, nil, nil, nil, v.table)))
 	win.Show()
+
+	v.countLabel = countLabel
+	v.updateCount()
 
 	start := func() {
 		direct, wide, err := v.resolveSelection(networkSelect.Text, allOption)
@@ -114,14 +168,17 @@ func (v *ScanView) Show() {
 
 		networkSelect.Disable()
 		rescanBtn.Disable()
-		resultsContainer.RemoveAll()
-		resultsContainer.Refresh()
+		stopBtn.Enable()
+		v.table.Refresh()
+		v.updateCount()
 		progress.SetValue(0)
-		progressNote.SetText(v.lang.Tf(lang.Scan_progress_pct, 0))
+		progressNote.Text = v.lang.Tf(lang.Scan_progress_pct, 0)
+		progressNote.Refresh()
 
-		v.run(direct, wide, win, progress, progressNote, statusLabel, resultsContainer, func() {
+		v.run(direct, wide, win, progress, progressNote, statusLabel, nil, func() {
 			networkSelect.Enable()
 			rescanBtn.Enable()
+			stopBtn.Disable()
 		})
 	}
 
@@ -178,9 +235,14 @@ func (v *ScanView) resolveSelection(text, allOption string) (direct, wide []stri
 
 // run discovers the active subnets of the wide routes, then scans those
 // together with the direct networks. done runs on the UI thread when finished.
-func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.ProgressBar, progressNote *widget.Label, statusLabel *widget.Label, resultsContainer *fyne.Container, done func()) {
+func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.ProgressBar, progressNote *canvas.Text, statusLabel *canvas.Text, resultsContainer *fyne.Container, done func()) {
 	v.stopped.Store(false)
 	timeout := time.Duration(v.timeoutSecs) * time.Second
+
+	setText := func(t *canvas.Text, s string) {
+		t.Text = s
+		t.Refresh()
+	}
 
 	setProgress := func(scanned, total uint32) {
 		if total == 0 {
@@ -192,18 +254,18 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 		}
 		fyne.Do(func() {
 			progress.SetValue(pct)
-			progressNote.SetText(v.lang.Tf(lang.Scan_progress_pct, int(pct*100)))
+			setText(progressNote, v.lang.Tf(lang.Scan_progress_pct, int(pct*100)))
 		})
 	}
 	setStatus := func(text string) {
-		fyne.Do(func() { statusLabel.SetText(text) })
+		fyne.Do(func() { setText(statusLabel, text) })
 	}
 
 	finish := func() {
 		fyne.Do(func() {
 			progress.SetValue(1)
-			progressNote.SetText(v.lang.T(lang.Scan_progress_100))
-			statusLabel.SetText("")
+			setText(progressNote, v.lang.T(lang.Scan_progress_100))
+			setText(statusLabel, "")
 			done()
 		})
 	}
@@ -228,7 +290,7 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 			setStatus(v.lang.T(lang.Scan_no_active_subnets))
 			fyne.Do(func() {
 				progress.SetValue(1)
-				progressNote.SetText(v.lang.T(lang.Scan_progress_100))
+				setText(progressNote, v.lang.T(lang.Scan_progress_100))
 				done()
 			})
 			return
@@ -291,14 +353,14 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 	}()
 }
 
-// addResult inserts a result in IP order, repaints the list and asks the host
+// addResult inserts a result in IP order, repaints the table and asks the host
 // what it is in the background.
-func (v *ScanView) addResult(res scanner.ScanResult, win fyne.Window, resultsContainer *fyne.Container) {
+func (v *ScanView) addResult(res scanner.ScanResult, win fyne.Window, _ *fyne.Container) {
 	v.resultsMu.Lock()
 	v.sortedResults = insertSorted(v.sortedResults, res, v.serverIP)
 	v.resultsMu.Unlock()
 
-	v.repaint(win, resultsContainer)
+	v.repaint()
 
 	go func() {
 		id := identifyHost(res.IP, res.PortsOpen, time.Duration(v.timeoutSecs)*time.Second)
@@ -309,27 +371,20 @@ func (v *ScanView) addResult(res scanner.ScanResult, win fyne.Window, resultsCon
 		v.identities[res.IP] = id
 		v.resultsMu.Unlock()
 
-		v.repaint(win, resultsContainer)
+		v.repaint()
 	}()
 }
 
-// repaint rebuilds the result rows from the current snapshot.
-func (v *ScanView) repaint(win fyne.Window, resultsContainer *fyne.Container) {
-	v.resultsMu.Lock()
-	snapshot := make([]scanner.ScanResult, len(v.sortedResults))
-	copy(snapshot, v.sortedResults)
-	identities := make(map[string]string, len(v.identities))
-	for ip, id := range v.identities {
-		identities[ip] = id
-	}
-	v.resultsMu.Unlock()
-
+// repaint refreshes the results table. The table pulls rows from the shared
+// slice on demand, so this only has to invalidate it — the previous version
+// destroyed and rebuilt every row widget on each new host found, which grew
+// quadratically over a large scan.
+func (v *ScanView) repaint() {
 	fyne.Do(func() {
-		resultsContainer.RemoveAll()
-		for _, r := range snapshot {
-			resultsContainer.Add(v.makeScanRow(r, identities[r.IP], win))
+		if v.table != nil {
+			v.table.Refresh()
 		}
-		resultsContainer.Refresh()
+		v.updateCount()
 	})
 }
 
@@ -350,56 +405,200 @@ func dedupeCIDRs(cidrs []string) []string {
 	return out
 }
 
-func (v *ScanView) makeScanRow(r scanner.ScanResult, identity string, win fyne.Window) fyne.CanvasObject {
+// hostIdentity renders the name column: reverse DNS rarely resolves across a
+// tunnel, so the fingerprinted identity stands in, and both are shown when the
+// name is known.
+func (v *ScanView) hostIdentity(r scanner.ScanResult, identity string) string {
 	host := ""
 	if len(r.Hostnames) > 0 {
 		host = strings.TrimSuffix(r.Hostnames[0], ".")
 	}
-
-	// Reverse DNS rarely resolves across a tunnel; show what the host looks
-	// like instead, and both when the name is known.
-	nameLabel := widget.NewLabel(host)
 	switch {
 	case host == "" && identity != "":
-		nameLabel = widget.NewLabelWithStyle(identity, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+		return identity
 	case host != "" && identity != "":
-		nameLabel.SetText(host + " (" + identity + ")")
+		return host + " (" + identity + ")"
+	case host != "":
+		return host
+	default:
+		return wgstat.Dash
+	}
+}
+
+// portsText renders the open ports, naming the well-known ones.
+func (v *ScanView) portsText(r scanner.ScanResult) string {
+	if len(r.PortsOpen) == 0 {
+		return v.lang.T(lang.Scan_no_open_ports)
+	}
+	names := map[int]string{22: "ssh", 80: "http", 443: "https", 53: "dns", 8080: "http-alt", 3389: "rdp", 445: "smb"}
+
+	parts := make([]string, 0, len(r.PortsOpen))
+	for _, p := range r.PortsOpen {
+		if n, ok := names[p]; ok {
+			parts = append(parts, strconv.Itoa(p)+"/"+n)
+		} else {
+			parts = append(parts, strconv.Itoa(p))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// snapshot returns a copy of the current results and identities.
+func (v *ScanView) snapshot() ([]scanner.ScanResult, map[string]string) {
+	v.resultsMu.Lock()
+	defer v.resultsMu.Unlock()
+
+	results := make([]scanner.ScanResult, len(v.sortedResults))
+	copy(results, v.sortedResults)
+	ids := make(map[string]string, len(v.identities))
+	for ip, id := range v.identities {
+		ids[ip] = id
+	}
+	return results, ids
+}
+
+// buildResultsTable creates the results table. Each row carries its own copy
+// and connect actions so a host can be acted on without leaving the scan.
+func (v *ScanView) buildResultsTable(win fyne.Window) *widget.Table {
+	table := widget.NewTableWithHeaders(
+		func() (int, int) {
+			v.resultsMu.Lock()
+			defer v.resultsMu.Unlock()
+			return len(v.sortedResults), len(scanColumns)
+		},
+		func() fyne.CanvasObject { return newScanCell(v.lang) },
+		func(id widget.TableCellID, obj fyne.CanvasObject) {
+			cell, ok := obj.(*scanCell)
+			if !ok {
+				return
+			}
+
+			v.resultsMu.Lock()
+			if id.Row >= len(v.sortedResults) {
+				v.resultsMu.Unlock()
+				cell.SetText("")
+				return
+			}
+			r := v.sortedResults[id.Row]
+			identity := v.identities[r.IP]
+			v.resultsMu.Unlock()
+
+			switch id.Col {
+			case 0:
+				text := r.IP
+				if r.IP == v.serverIP {
+					text += "  " + v.lang.T(lang.Scan_this_host)
+				}
+				cell.SetText(text)
+			case 1:
+				cell.SetText(v.hostIdentity(r, identity))
+			case 2:
+				cell.SetText(v.portsText(r))
+			case 3:
+				ip := r.IP
+				cell.SetActions(
+					func() {
+						win.Clipboard().SetContent(ip)
+					},
+					func() { v.showSSHDialog(ip, win) },
+				)
+			}
+		},
+	)
+
+	table.CreateHeader = func() fyne.CanvasObject {
+		h := widget.NewLabel("")
+		h.TextStyle = fyne.TextStyle{Bold: true}
+		return h
+	}
+	table.UpdateHeader = func(id widget.TableCellID, obj fyne.CanvasObject) {
+		h, ok := obj.(*widget.Label)
+		if !ok {
+			return
+		}
+		if id.Col < 0 || id.Col >= len(scanColumns) {
+			h.SetText("")
+			return
+		}
+		h.SetText(strings.ToUpper(v.lang.T(scanColumns[id.Col].titleKey)))
 	}
 
-	portStr := v.lang.T(lang.Scan_no_open_ports)
-	if len(r.PortsOpen) > 0 {
-		var portsStrs []string
-		for _, p := range r.PortsOpen {
-			if p == 22 {
-				portsStrs = append(portsStrs, strconv.Itoa(p)+" (ssh)")
-			} else {
-				portsStrs = append(portsStrs, strconv.Itoa(p))
+	table.ShowHeaderRow = true
+	table.ShowHeaderColumn = false
+	table.StickyColumnCount = 1
 
+	for i, c := range scanColumns {
+		table.SetColumnWidth(i, c.width)
+	}
+	// Rows carry buttons, so they need a little more height than the peer
+	// table's plain text rows.
+	table.SetRowHeight(-1, 28)
+
+	return table
+}
+
+// updateCount refreshes the "N hosts" counter above the table.
+func (v *ScanView) updateCount() {
+	if v.countLabel == nil {
+		return
+	}
+	v.resultsMu.Lock()
+	n := len(v.sortedResults)
+	v.resultsMu.Unlock()
+
+	v.countLabel.Text = v.lang.Tf(lang.Scan_hosts_found, n)
+	v.countLabel.Refresh()
+}
+
+// exportCSV writes the current results to a file the user picks.
+func (v *ScanView) exportCSV(win fyne.Window) {
+	results, ids := v.snapshot()
+	if len(results) == 0 {
+		helpers.ShowInformation(v.lang.T(lang.Scan_btn_export), v.lang.T(lang.Scan_no_results), win)
+		return
+	}
+
+	save := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
+		if err != nil {
+			helpers.ShowError(err, win)
+			return
+		}
+		if w == nil {
+			return
+		}
+		defer w.Close()
+
+		cw := csv.NewWriter(w)
+		defer cw.Flush()
+
+		_ = cw.Write([]string{"address", "identity", "ports"})
+		for _, r := range results {
+			ports := make([]string, 0, len(r.PortsOpen))
+			for _, p := range r.PortsOpen {
+				ports = append(ports, strconv.Itoa(p))
+			}
+			if err := cw.Write([]string{
+				r.IP,
+				v.hostIdentity(r, ids[r.IP]),
+				strings.Join(ports, " "),
+			}); err != nil {
+				helpers.ShowError(errors.New(v.lang.Tf(lang.Scan_export_error, err.Error())), win)
+				return
 			}
 		}
-		portStr = v.lang.Tf(lang.Scan_ports_label, strings.Join(portsStrs, ", "))
-	}
+		cw.Flush()
+		if err := cw.Error(); err != nil {
+			helpers.ShowError(errors.New(v.lang.Tf(lang.Scan_export_error, err.Error())), win)
+			return
+		}
 
-	ipLabel := widget.NewLabel(r.IP)
-	ipLabel.TextStyle = fyne.TextStyle{Monospace: true}
+		helpers.ShowInformation(v.lang.T(lang.Scan_btn_export),
+			v.lang.Tf(lang.Scan_export_success, w.URI().Path()), win)
+	}, win)
 
-	portLabel := widget.NewLabel(portStr)
-	portLabel.TextStyle = fyne.TextStyle{Monospace: true}
-
-	actionCol := container.NewHBox()
-	ip := r.IP
-	sshBtn := widget.NewButton(v.lang.T(lang.Ssh_connect_btn), func() {
-		v.showSSHDialog(ip, win)
-	})
-	sshBtn.Importance = widget.LowImportance
-	actionCol.Add(sshBtn)
-
-	return container.NewPadded(container.NewGridWithColumns(4,
-		ipLabel,
-		nameLabel,
-		portLabel,
-		actionCol,
-	))
+	save.SetFileName(v.ifaceName + "-scan.csv")
+	save.Resize(fyne.NewSize(820, 600))
+	save.Show()
 }
 
 func (v *ScanView) showSSHDialog(ip string, parent fyne.Window) {

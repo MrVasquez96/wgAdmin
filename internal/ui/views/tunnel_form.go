@@ -10,11 +10,13 @@ import (
 
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
+	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgstat"
+	"wgAdmin/internal/wgwidget"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/MrVasquez96/go-wg/wg"
@@ -171,7 +173,7 @@ func (f *TunnelForm) Show() {
 	win := fyne.CurrentApp().NewWindow(title)
 	win.Resize(fyne.NewSize(700, 750))
 
-	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T(lang.Tunnel_btn_generate_keys), theme.ViewRefreshIcon(), func() {
+	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T(lang.Tunnel_btn_generate_keys), wgtheme.IconRefresh, func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
 			helpers.ShowError(err, win)
@@ -181,7 +183,7 @@ func (f *TunnelForm) Show() {
 		f.publicKeyLabel.SetText(pub)
 	})
 
-	copyPubKeyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+	copyPubKeyBtn := widget.NewButtonWithIcon("", wgtheme.IconCopy, func() {
 		if f.publicKeyLabel.Text != "" && f.publicKeyLabel.Text != f.lang.T(lang.Tunnel_public_key_invalid) {
 			win.Clipboard().SetContent(f.publicKeyLabel.Text)
 		}
@@ -195,20 +197,37 @@ func (f *TunnelForm) Show() {
 	f.postDownEntry.MultiLine = true
 	f.postDownEntry.SetMinRowsVisible(3)
 
-	interfaceForm := widget.NewForm(
+	// Grouped into the four things a tunnel actually consists of, rather than
+	// one undifferentiated column of nine fields.
+	identityForm := widget.NewForm(
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_name), f.nameEntry),
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_private_key), privKeyRow),
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_public_key), pubKeyRow),
+	)
+
+	networkForm := widget.NewForm(
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_address), f.addressEntry),
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_dns), f.dnsEntry),
-		//widget.NewFormItem(f.lang.T(lang.Tunnel_label_listen_port), f.listenPortEntry),
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_public_endpoint), f.publicEndpointEntry),
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_mtu), f.mtuEntry),
+	)
+
+	hooksForm := widget.NewForm(
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_post_up), f.postUpEntry),
 		widget.NewFormItem(f.lang.T(lang.Tunnel_label_post_down), f.postDownEntry),
 	)
 
-	saveBtn := widget.NewButtonWithIcon(f.lang.T(lang.Common_save), theme.DocumentSaveIcon(), func() {
+	interfaceForm := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
+		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_identity)),
+		identityForm,
+		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_network)),
+		networkForm,
+		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_hooks)),
+		formHint(f.lang.T(lang.Tunnel_hooks_hint)),
+		hooksForm,
+	)
+
+	saveBtn := widget.NewButtonWithIcon(f.lang.T(lang.Common_save), wgtheme.IconImport, func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
 			helpers.ShowError(errs[0], win)
@@ -236,15 +255,23 @@ func (f *TunnelForm) Show() {
 
 	content := container.NewBorder(
 		nil,
-		container.NewPadded(buttons),
+		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), buttons),
 		nil, nil,
-		container.NewVScroll(container.NewVBox(
-			container.NewPadded(widget.NewCard(f.lang.T(lang.Tunnel_tab_interface), "", interfaceForm)),
-		)),
+		container.NewVScroll(container.New(
+			layout.NewCustomPaddedLayout(0, wgtheme.SpaceLG, 0, wgtheme.SpaceMD), interfaceForm)),
 	)
 
-	win.SetContent(container.NewPadded(content))
+	win.SetContent(container.New(layout.NewCustomPaddedLayout(
+		wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceXL), content))
 	win.Show()
+}
+
+// formHint renders the explanatory line under a section header.
+func formHint(text string) fyne.CanvasObject {
+	l := widget.NewLabel(text)
+	l.Wrapping = fyne.TextWrapWord
+	l.Importance = widget.LowImportance
+	return l
 }
 
 // ShowPeers displays the peers editing form
@@ -259,33 +286,48 @@ func (f *TunnelForm) ShowPeers() {
 
 	f.peersList = widget.NewList(
 		func() int { return len(f.peers) },
-		func() fyne.CanvasObject {
-			return container.NewHBox(
-				widget.NewLabel("Peer"),
-				layout.NewSpacer(),
-				widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil),
-				widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
-			)
-		},
+		func() fyne.CanvasObject { return newPeerListRow() },
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			c := obj.(*fyne.Container)
-			label := c.Objects[0].(*widget.Label)
-			editBtn := c.Objects[2].(*widget.Button)
-			deleteBtn := c.Objects[3].(*widget.Button)
+			row, ok := obj.(*peerListRow)
+			if !ok || id >= len(f.peers) {
+				return
+			}
 
 			peer := f.peers[id]
 			pubKeyStr := peer.PublicKey.String()
-			displayKey := pubKeyStr
-			if len(displayKey) > 12 {
-				displayKey = displayKey[:12]
-			}
-			peerName := peer.Name
-			if peerName == "" {
-				peerName = f.lang.T(lang.Tunnel_peer_list_label)
-			}
-			label.SetText(fmt.Sprintf("%s... - %s", displayKey, peerName))
 
-			editBtn.OnTapped = func() {
+			// The parser writes "Unknown" for unnamed peers; the key prefix
+			// identifies them far better than that placeholder does.
+			name := strings.TrimSpace(peer.Name)
+			if name == "" || name == "Unknown" {
+				name = wgstat.ShortKey(pubKeyStr)
+			}
+
+			ips := make([]string, 0, len(peer.AllowedIPs))
+			for _, n := range peer.AllowedIPs {
+				ips = append(ips, n.String())
+			}
+			subtitle := strings.Join(ips, ", ")
+			if subtitle == "" {
+				subtitle = wgstat.ShortKey(pubKeyStr)
+			}
+
+			// Provisioning is only possible for peers whose private key this
+			// session generated — that is what a client config needs.
+			_, canProvision := f.peerPrivateKeys[pubKeyStr]
+			row.Set(name, subtitle, canProvision)
+
+			row.onQR = func() {
+				cfg, errs := f.validate()
+				if len(errs) > 0 {
+					helpers.ShowError(errs[0], win)
+					return
+				}
+				ShowPeerQR(win, cfg, f.peers[id], f.peerPrivateKeys[pubKeyStr],
+					f.publicEndpointEntry.Text, f.lang)
+			}
+
+			row.onEdit = func() {
 				peerCopy := f.peers[id]
 				oldPubKey := peerCopy.PublicKey.String()
 				peerForm := NewPeerForm(&peerCopy, func(p config.PeerConfig, privateKey string) {
@@ -299,20 +341,20 @@ func (f *TunnelForm) ShowPeers() {
 				peerForm.Show(win)
 			}
 
-			deleteBtn.OnTapped = func() {
-				helpers.ShowConfirm(f.lang.T(lang.Tunnel_delete_peer_title), f.lang.T(lang.Tunnel_delete_peer_msg), func(yes bool) {
-					if yes {
-						pubKey := f.peers[id].PublicKey.String()
-						delete(f.peerPrivateKeys, pubKey)
-						f.peers = append(f.peers[:id], f.peers[id+1:]...)
-						f.peersList.Refresh()
-					}
-				}, win)
+			row.onDelete = func() {
+				helpers.ShowConfirm(f.lang.T(lang.Tunnel_delete_peer_title),
+					f.lang.T(lang.Tunnel_delete_peer_msg), func(yes bool) {
+						if yes {
+							delete(f.peerPrivateKeys, f.peers[id].PublicKey.String())
+							f.peers = append(f.peers[:id], f.peers[id+1:]...)
+							f.peersList.Refresh()
+						}
+					}, win)
 			}
 		},
 	)
 
-	addPeerBtn := widget.NewButtonWithIcon(f.lang.T(lang.Tunnel_btn_add_peer), theme.ContentAddIcon(), func() {
+	addPeerBtn := widget.NewButtonWithIcon(f.lang.T(lang.Tunnel_btn_add_peer), wgtheme.IconAdd, func() {
 		peerForm := NewPeerForm(nil, func(p config.PeerConfig, privateKey string) {
 			f.peers = append(f.peers, p)
 			if privateKey != "" {
@@ -323,19 +365,20 @@ func (f *TunnelForm) ShowPeers() {
 		peerForm.Show(win)
 	})
 
-	sizedList := container.NewGridWrap(
-		fyne.NewSize(560, float32(f.peersList.Length()*50)),
+	// The list fills the window rather than being sized to its own contents:
+	// the old fixed GridWrap height meant a tunnel with many peers overflowed
+	// while one with a single peer left most of the window empty.
+	peersSection := container.NewBorder(
+		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM),
+			wgwidget.SectionHeader(f.lang.T(lang.Tunnel_peer_list_label)),
+			formHint(f.lang.T(lang.Tunnel_peers_hint)),
+		),
+		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), addPeerBtn),
+		nil, nil,
 		f.peersList,
 	)
 
-	peersSection := container.NewBorder(
-		widget.NewLabel(f.lang.T(lang.Tunnel_peer_list_label)),
-		addPeerBtn,
-		nil, nil,
-		sizedList,
-	)
-
-	saveBtn := widget.NewButtonWithIcon(f.lang.T(lang.Common_save), theme.DocumentSaveIcon(), func() {
+	saveBtn := widget.NewButtonWithIcon(f.lang.T(lang.Common_save), wgtheme.IconImport, func() {
 		cfg, errs := f.validate()
 		if len(errs) > 0 {
 			helpers.ShowError(errs[0], win)
@@ -363,14 +406,13 @@ func (f *TunnelForm) ShowPeers() {
 
 	content := container.NewBorder(
 		nil,
-		container.NewPadded(buttons),
+		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), buttons),
 		nil, nil,
-		container.NewVScroll(container.NewVBox(
-			container.NewPadded(widget.NewCard(f.lang.T(lang.Tunnel_tab_peers), "", peersSection)),
-		)),
+		peersSection,
 	)
 
-	win.SetContent(container.NewPadded(content))
+	win.SetContent(container.New(layout.NewCustomPaddedLayout(
+		wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceXL), content))
 	win.Show()
 }
 

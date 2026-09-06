@@ -2,14 +2,18 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"wgAdmin/internal/ui/helpers"
 	"wgAdmin/internal/ui/lang"
+	wgtheme "wgAdmin/internal/ui/theme"
+	"wgAdmin/internal/wgwidget"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/MrVasquez96/go-wg/wg"
@@ -24,6 +28,7 @@ type BackupView struct {
 
 	win           fyne.Window
 	listContainer *fyne.Container
+	countLabel    *canvas.Text
 }
 
 // NewBackupView creates a new backup/restore view
@@ -40,10 +45,9 @@ func NewBackupView(parent fyne.Window, ctrl *wg.WG, onRestore func(), language *
 // Show opens the backup/restore window
 func (bv *BackupView) Show() {
 	bv.win = fyne.CurrentApp().NewWindow(bv.lang.T(lang.Backup_title))
-	bv.win.Resize(fyne.NewSize(700, 500))
+	bv.win.Resize(fyne.NewSize(720, 560))
 
-	// Clean old backups button
-	cleanBtn := widget.NewButtonWithIcon(bv.lang.T(lang.Backup_btn_clean_old), theme.DeleteIcon(), func() {
+	cleanBtn := widget.NewButtonWithIcon(bv.lang.T(lang.Backup_btn_clean_old), wgtheme.IconTrash, func() {
 		helpers.ShowConfirm(bv.lang.T(lang.Backup_clean_confirm_title),
 			bv.lang.T(lang.Backup_clean_confirm_msg),
 			func(yes bool) {
@@ -62,13 +66,20 @@ func (bv *BackupView) Show() {
 	})
 	cleanBtn.Importance = widget.DangerImportance
 
-	header := container.NewHBox(cleanBtn)
+	bv.countLabel = wgwidget.Caption("")
 
-	scroll := container.NewVScroll(bv.listContainer)
-	scroll.SetMinSize(fyne.NewSize(660, 400))
+	header := container.NewBorder(nil, nil,
+		container.NewCenter(bv.countLabel), cleanBtn)
 
-	content := container.NewBorder(container.NewPadded(header), nil, nil, nil, scroll)
-	bv.win.SetContent(container.NewPadded(content))
+	content := container.NewBorder(
+		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD),
+			header, wgwidget.Hairline()),
+		nil, nil, nil,
+		container.NewVScroll(bv.listContainer),
+	)
+
+	bv.win.SetContent(container.New(layout.NewCustomPaddedLayout(
+		wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG), content))
 
 	bv.refresh()
 	bv.win.Show()
@@ -79,24 +90,44 @@ func (bv *BackupView) refresh() {
 
 	backups, err := bv.ctrl.ListBackups()
 	if err != nil {
-		bv.listContainer.Add(widget.NewLabel(bv.lang.Tf(lang.Backup_error_loading, err)))
+		bv.listContainer.Add(emptyNote(bv.lang.Tf(lang.Backup_error_loading, err)))
+		bv.setCount(0)
 		return
 	}
 
 	if len(backups) == 0 {
-		bv.listContainer.Add(widget.NewLabel(bv.lang.T(lang.Backup_no_backups)))
+		bv.listContainer.Add(emptyNote(bv.lang.T(lang.Backup_no_backups)))
+		bv.setCount(0)
 		return
 	}
 
+	// Newest first, so the backup most likely to be wanted is at the top.
+	sort.SliceStable(backups, func(i, j int) bool {
+		return backups[i].Timestamp.After(backups[j].Timestamp)
+	})
+
+	now := time.Now()
+	var lastName string
+
 	for _, b := range backups {
-		backup := b // capture for closure
+		backup := b // capture for the closure
 
-		nameLabel := widget.NewLabel(backup.Name)
-		nameLabel.TextStyle = fyne.TextStyle{Bold: true}
+		// Group by tunnel: a heading is emitted whenever the name changes, so
+		// a long flat list becomes scannable per tunnel.
+		if backup.Name != lastName {
+			if lastName != "" {
+				bv.listContainer.Add(container.New(
+					layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), wgwidget.Hairline()))
+			}
+			bv.listContainer.Add(wgwidget.SectionHeader(backup.Name))
+			lastName = backup.Name
+		}
 
-		timeLabel := widget.NewLabel(backup.Timestamp.Format("2006-01-02 15:04:05"))
+		relative := wgwidget.Value(wgwidget.RelativeTime(backup.Timestamp, now))
+		exact := wgwidget.DimValue(backup.Timestamp.Format("2006-01-02 15:04:05"))
+		exact.TextSize = 11
 
-		restoreBtn := widget.NewButtonWithIcon(bv.lang.T(lang.Common_restore), theme.HistoryIcon(), func() {
+		restoreBtn := widget.NewButtonWithIcon(bv.lang.T(lang.Common_restore), wgtheme.IconClock, func() {
 			msg := bv.lang.Tf(lang.Backup_restore_confirm_msg, backup.Filename, backup.Name)
 			helpers.ShowConfirm(bv.lang.T(lang.Backup_restore_confirm_title), msg, func(yes bool) {
 				if !yes {
@@ -111,13 +142,26 @@ func (bv *BackupView) refresh() {
 				if bv.onRestore != nil {
 					bv.onRestore()
 				}
+				bv.refresh()
 			}, bv.win)
 		})
-		restoreBtn.Importance = widget.HighImportance
 
-		infoBox := container.NewVBox(nameLabel, timeLabel)
-		row := container.NewBorder(nil, nil, infoBox, restoreBtn)
-		bv.listContainer.Add(container.NewPadded(row))
-		bv.listContainer.Add(widget.NewSeparator())
+		info := container.New(layout.NewCustomPaddedVBoxLayout(1), relative, exact)
+		row := container.New(layout.NewCustomPaddedLayout(
+			wgtheme.SpaceSM, wgtheme.SpaceSM, wgtheme.SpaceMD, 0),
+			container.NewBorder(nil, nil, info, restoreBtn))
+
+		bv.listContainer.Add(row)
 	}
+
+	bv.setCount(len(backups))
+}
+
+// setCount updates the header counter.
+func (bv *BackupView) setCount(n int) {
+	if bv.countLabel == nil {
+		return
+	}
+	bv.countLabel.Text = bv.lang.Tf(lang.Backup_count, n)
+	bv.countLabel.Refresh()
 }

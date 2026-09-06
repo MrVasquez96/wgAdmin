@@ -60,19 +60,29 @@ func main() {
 
 	ctrl := wg.New(cfg.WGConfigPath)
 
-	version := "unknown"
-	if meta.Version != "" {
-		version = meta.Version
+	// Metadata is only embedded by `fyne package`/`release`. Under a plain
+	// `go build` it comes back empty, which produced the title
+	// "- version: 0.0.1", so fall back to the application's own name.
+	if meta.Name == "" {
+		meta.Name = "wgAdmin"
+	}
+	version := meta.Version
+	if version == "" {
+		version = "dev"
 	}
 
-	w := a.NewWindow(meta.Name + " - version: " + version)
+	w := a.NewWindow(meta.Name + " · " + version)
 	w.Resize(fyne.NewSize(float32(cfg.WindowWidth), float32(cfg.WindowHeight)))
 	if cfg.StartFullscreen {
 		w.SetFullScreen(true)
 	}
 
-	mainView := ui.NewMainView(w, &ctrl, cfg, language).Build(meta)
-	w.SetContent(mainView)
+	// Keep the view itself, not just its canvas object: the initial load has to
+	// come from MainView.Refresh(). Refreshing the returned CanvasObject only
+	// repaints an empty list, which left the window blank until the first
+	// auto-refresh tick — or indefinitely when auto-refresh was disabled.
+	mainView := ui.NewMainView(w, &ctrl, cfg, language)
+	w.SetContent(mainView.Build(meta))
 	mainView.Refresh()
 
 	// If sudo mode is selected and not root, show password dialog over the main UI.

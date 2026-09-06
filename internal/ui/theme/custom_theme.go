@@ -15,15 +15,19 @@ import (
 // VariantNone means follow the system theme
 const VariantNone fyne.ThemeVariant = 255
 
-// WGAdminTheme is a modern custom theme for the WireGuard Admin app
+// WGAdminTheme is the application theme: a dense, technical dark-first look
+// driven entirely by the user's colour tokens in settings.
 type WGAdminTheme struct {
-	settings       *settings.AppSettings
-	forcedVariant  fyne.ThemeVariant
+	settings      *settings.AppSettings
+	forcedVariant fyne.ThemeVariant
 }
 
 var _ fyne.Theme = (*WGAdminTheme)(nil)
 
-// NewWGAdminTheme creates a new WGAdminTheme that follows the system variant
+// activeTheme holds the currently active WGAdminTheme instance
+var activeTheme *WGAdminTheme
+
+// NewWGAdminTheme creates a theme honouring the user's light/dark preference.
 func NewWGAdminTheme(cfg *settings.AppSettings) *WGAdminTheme {
 	t := &WGAdminTheme{settings: cfg, forcedVariant: VariantNone}
 	if cfg != nil {
@@ -34,18 +38,21 @@ func NewWGAdminTheme(cfg *settings.AppSettings) *WGAdminTheme {
 			t.forcedVariant = theme.VariantDark
 		}
 	}
-	// Store for use by CurrentVariant()
 	activeTheme = t
 	return t
 }
 
-// activeTheme holds the currently active WGAdminTheme instance
-var activeTheme *WGAdminTheme
-
 // CurrentVariant returns the resolved theme variant, respecting the user's
-// forced light/dark setting. Use this instead of fyne.CurrentApp().Settings().ThemeVariant()
-// when you need colors that match the custom theme.
+// forced light/dark setting. Use this instead of
+// fyne.CurrentApp().Settings().ThemeVariant() when you need colours that match
+// the custom theme.
 func CurrentVariant() fyne.ThemeVariant {
+	if fyne.CurrentApp() == nil {
+		if activeTheme != nil && activeTheme.forcedVariant != VariantNone {
+			return activeTheme.forcedVariant
+		}
+		return theme.VariantDark
+	}
 	sys := fyne.CurrentApp().Settings().ThemeVariant()
 	if activeTheme != nil {
 		return activeTheme.resolveVariant(sys)
@@ -53,7 +60,7 @@ func CurrentVariant() fyne.ThemeVariant {
 	return sys
 }
 
-// resolveVariant returns the forced variant if set, otherwise the system variant
+// resolveVariant returns the forced variant if set, otherwise the system one.
 func (t *WGAdminTheme) resolveVariant(systemVariant fyne.ThemeVariant) fyne.ThemeVariant {
 	if t.forcedVariant != VariantNone {
 		return t.forcedVariant
@@ -61,248 +68,81 @@ func (t *WGAdminTheme) resolveVariant(systemVariant fyne.ThemeVariant) fyne.Them
 	return systemVariant
 }
 
-// getColorOrDefault returns a parsed hex color from settings, falling back to the default
-func (t *WGAdminTheme) getColorOrDefault(settingColor, defaultColor string) color.NRGBA {
-	if settingColor != "" {
-		if c, err := parseHexColor(settingColor); err == nil {
-			return c
-		}
-	}
-	if c, err := parseHexColor(defaultColor); err == nil {
-		return c
-	}
-	// Fallback to white
-	return color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-}
-
-// accentColor returns the user's configured accent color or the default
-func (t *WGAdminTheme) accentColor(variant fyne.ThemeVariant) color.NRGBA {
-	if t.settings == nil {
-		if variant == theme.VariantLight {
-			return t.getColorOrDefault("", settings.DefaultLightAccentColor)
-		}
-		return t.getColorOrDefault("", settings.DefaultDarkAccentColor)
-	}
-
-	if variant == theme.VariantLight {
-		return t.getColorOrDefault(t.settings.LightAccentColor, settings.DefaultLightAccentColor)
-	}
-	return t.getColorOrDefault(t.settings.DarkAccentColor, settings.DefaultDarkAccentColor)
-}
-
-// fontSizeOffset returns the size adjustment based on font size setting
-func (t *WGAdminTheme) fontSizeOffset() float32 {
-	if t.settings == nil {
-		return 0
-	}
-	switch t.settings.FontSize {
-	case "small":
-		return -2
-	case "large":
-		return 2
-	default:
-		return 0
-	}
-}
-
-// Color returns the color for the specified name
+// Color maps Fyne's colour names onto the application palette.
 func (t *WGAdminTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	variant = t.resolveVariant(variant)
-	accent := t.accentColor(variant)
-
-	// Helper to get color based on variant
-	getColor := func(lightSetting, darkSetting, lightDefault, darkDefault string) color.NRGBA {
-		if variant == theme.VariantLight {
-			if t.settings != nil {
-				return t.getColorOrDefault(lightSetting, lightDefault)
-			}
-			return t.getColorOrDefault("", lightDefault)
-		}
-		if t.settings != nil {
-			return t.getColorOrDefault(darkSetting, darkDefault)
-		}
-		return t.getColorOrDefault("", darkDefault)
-	}
+	p := paletteFor(t.settings, t.resolveVariant(variant))
 
 	switch name {
 	case theme.ColorNameBackground:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightBackgroundColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkBackgroundColor }),
-			settings.DefaultLightBackgroundColor,
-			settings.DefaultDarkBackgroundColor,
-		)
-
+		return p.Background
 	case theme.ColorNameButton:
-		return accent
-
+		// Plain buttons sit on the raised surface; importance-coloured buttons
+		// (High/Danger/Success) are painted by Fyne from Primary/Error/Success.
+		return p.SurfaceRaised
 	case theme.ColorNameDisabledButton:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightTextDisabledColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkTextDisabledColor }),
-			settings.DefaultLightTextDisabledColor,
-			settings.DefaultDarkTextDisabledColor,
-		)
-
+		return p.Surface
 	case theme.ColorNameDisabled:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightTextDisabledColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkTextDisabledColor }),
-			settings.DefaultLightTextDisabledColor,
-			settings.DefaultDarkTextDisabledColor,
-		)
-
+		return p.TextDisabled
 	case theme.ColorNameError:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightErrorColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkErrorColor }),
-			settings.DefaultLightErrorColor,
-			settings.DefaultDarkErrorColor,
-		)
-
+		return p.Error
 	case theme.ColorNameFocus:
-		return accent
-
+		return Alpha(p.Accent, 90)
 	case theme.ColorNameForeground:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightTextPrimaryColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkTextPrimaryColor }),
-			settings.DefaultLightTextPrimaryColor,
-			settings.DefaultDarkTextPrimaryColor,
-		)
-
+		return p.TextPrimary
+	case theme.ColorNameForegroundOnPrimary:
+		return onColor(p.Accent)
+	case theme.ColorNameForegroundOnError:
+		return onColor(p.Error)
+	case theme.ColorNameForegroundOnSuccess:
+		return onColor(p.Success)
+	case theme.ColorNameForegroundOnWarning:
+		return onColor(p.Warning)
 	case theme.ColorNameHover:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightHoverColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkHoverColor }),
-			settings.DefaultLightHoverColor,
-			settings.DefaultDarkHoverColor,
-		)
-
+		return p.Hover
 	case theme.ColorNameInputBackground:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightInputBackgroundColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkInputBackgroundColor }),
-			settings.DefaultLightInputBackgroundColor,
-			settings.DefaultDarkInputBackgroundColor,
-		)
-
+		return p.InputBackground
 	case theme.ColorNameInputBorder:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightInputBorderColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkInputBorderColor }),
-			settings.DefaultLightInputBorderColor,
-			settings.DefaultDarkInputBorderColor,
-		)
-
+		return p.Border
 	case theme.ColorNameMenuBackground:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightMenuBackgroundColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkMenuBackgroundColor }),
-			settings.DefaultLightMenuBackgroundColor,
-			settings.DefaultDarkMenuBackgroundColor,
-		)
-
+		return p.SurfaceRaised
 	case theme.ColorNameOverlayBackground:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightSurfaceColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkSurfaceColor }),
-			settings.DefaultLightSurfaceColor,
-			settings.DefaultDarkSurfaceColor,
-		)
-
+		return p.Surface
 	case theme.ColorNamePlaceHolder:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightTextSecondaryColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkTextSecondaryColor }),
-			settings.DefaultLightTextSecondaryColor,
-			settings.DefaultDarkTextSecondaryColor,
-		)
-
+		return p.TextDim
 	case theme.ColorNamePressed:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightPressedColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkPressedColor }),
-			settings.DefaultLightPressedColor,
-			settings.DefaultDarkPressedColor,
-		)
-
+		return p.Pressed
 	case theme.ColorNamePrimary:
-		return accent
-
+		return p.Accent
 	case theme.ColorNameScrollBar:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightScrollbarColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkScrollbarColor }),
-			settings.DefaultLightScrollbarColor,
-			settings.DefaultDarkScrollbarColor,
-		)
-
+		return Alpha(p.TextDim, 120)
 	case theme.ColorNameSelection:
-		sel := t.getColorOrDefault(
-			t.settingOrEmpty(func(s *settings.AppSettings) string {
-				if variant == theme.VariantLight {
-					return s.LightSelectionColor
-				}
-				return s.DarkSelectionColor
-			}),
-			func() string {
-				if variant == theme.VariantLight {
-					return settings.DefaultLightSelectionColor
-				}
-				return settings.DefaultDarkSelectionColor
-			}(),
-		)
-		return sel
-
+		return p.Selection
 	case theme.ColorNameSeparator:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightBorderColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkBorderColor }),
-			settings.DefaultLightBorderColor,
-			settings.DefaultDarkBorderColor,
-		)
-
+		return p.Border
 	case theme.ColorNameShadow:
-		return color.NRGBA{R: 0, G: 0, B: 0, A: 40}
-
+		return color.NRGBA{A: 90}
 	case theme.ColorNameSuccess:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightSuccessColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkSuccessColor }),
-			settings.DefaultLightSuccessColor,
-			settings.DefaultDarkSuccessColor,
-		)
-
+		return p.Success
 	case theme.ColorNameWarning:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightWarningColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkWarningColor }),
-			settings.DefaultLightWarningColor,
-			settings.DefaultDarkWarningColor,
-		)
-
+		return p.Warning
 	case theme.ColorNameHeaderBackground:
-		return getColor(
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.LightHeaderBackgroundColor }),
-			t.settingOrEmpty(func(s *settings.AppSettings) string { return s.DarkHeaderBackgroundColor }),
-			settings.DefaultLightHeaderBackgroundColor,
-			settings.DefaultDarkHeaderBackgroundColor,
-		)
+		return p.SurfaceRaised
 	}
 
 	return theme.DefaultTheme().Color(name, variant)
 }
 
-// settingOrEmpty is a helper to safely get a setting value or empty string
-func (t *WGAdminTheme) settingOrEmpty(fn func(*settings.AppSettings) string) string {
-	if t.settings == nil {
-		return ""
+// onColor returns black or white, whichever reads better on top of c.
+func onColor(c color.NRGBA) color.NRGBA {
+	// Rec. 601 luma — good enough for picking a legible label colour.
+	lum := 0.299*float64(c.R) + 0.587*float64(c.G) + 0.114*float64(c.B)
+	if lum > 150 {
+		return color.NRGBA{R: 8, G: 10, B: 14, A: 255}
 	}
-	return fn(t.settings)
+	return color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 }
 
-// Font returns the font for the specified style
+// Font returns Inter for prose and JetBrains Mono for machine data.
 func (t *WGAdminTheme) Font(style fyne.TextStyle) fyne.Resource {
 	if t.settings != nil && !t.settings.UseCustomFont {
 		return theme.DefaultTheme().Font(style)
@@ -322,47 +162,77 @@ func (t *WGAdminTheme) Font(style fyne.TextStyle) fyne.Resource {
 	return fontInterRegular
 }
 
-// Icon returns the icon for the specified name
+// Icon returns the application's own icon for name, falling back to Fyne's
+// default set for anything not covered.
 func (t *WGAdminTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	if res, ok := overrideIcon(name); ok {
+		return res
+	}
 	return theme.DefaultTheme().Icon(name)
 }
 
-// Size returns the size for the specified name
+// fontSizeOffset returns the size adjustment based on the font size setting.
+func (t *WGAdminTheme) fontSizeOffset() float32 {
+	if t.settings == nil {
+		return 0
+	}
+	switch t.settings.FontSize {
+	case "small":
+		return -1
+	case "large":
+		return 2
+	default:
+		return 0
+	}
+}
+
+// compact reports whether the user asked for the tighter spacing scale.
+func (t *WGAdminTheme) compact() bool {
+	return t.settings != nil && t.settings.Density == settings.DensityCompact
+}
+
+// Size returns a dense, technical type and spacing scale. Text sizes track the
+// user's font-size preference; spacing tracks the density preference.
 func (t *WGAdminTheme) Size(name fyne.ThemeSizeName) float32 {
 	offset := t.fontSizeOffset()
 
+	pad, inner := float32(8), float32(6)
+	if t.compact() {
+		pad, inner = 6, 4
+	}
+
 	switch name {
 	case theme.SizeNamePadding:
-		return 12
+		return pad
 	case theme.SizeNameInnerPadding:
-		return 14
+		return inner
 	case theme.SizeNameScrollBar:
-		return 18
-	case theme.SizeNameScrollBarSmall:
 		return 10
+	case theme.SizeNameScrollBarSmall:
+		return 5
 	case theme.SizeNameSeparatorThickness:
 		return 1
 	case theme.SizeNameText:
-		return 14 + offset
+		return 13 + offset
 	case theme.SizeNameHeadingText:
-		return 24 + offset
+		return 19 + offset
 	case theme.SizeNameSubHeadingText:
-		return 18 + offset
+		return 15 + offset
 	case theme.SizeNameCaptionText:
-		return 12 + offset
+		return 10 + offset
 	case theme.SizeNameInputBorder:
-		return 2
+		return 1
 	case theme.SizeNameInputRadius:
-		return 8
+		return RadiusChip + 2
 	case theme.SizeNameSelectionRadius:
-		return 6
+		return RadiusChip + 1
 	}
 	return theme.DefaultTheme().Size(name)
 }
 
-// parseHexColor parses a hex color string like "#1a73e8" or "1a73e8"
+// parseHexColor parses a hex colour string like "#1a73e8" or "1a73e8".
 func parseHexColor(hex string) (color.NRGBA, error) {
-	hex = strings.TrimPrefix(hex, "#")
+	hex = strings.TrimPrefix(strings.TrimSpace(hex), "#")
 	if len(hex) != 6 {
 		return color.NRGBA{}, fmt.Errorf("invalid hex color: %s", hex)
 	}
@@ -380,119 +250,3 @@ func parseHexColor(hex string) (color.NRGBA, error) {
 	}
 	return color.NRGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255}, nil
 }
-
-// Colors provides pre-defined colors for use in the app
-type Colors struct{}
-
-// getThemeColor is a helper to get colors from the active theme
-func (c Colors) getThemeColor(lightSetting, darkSetting, lightDefault, darkDefault string, variant fyne.ThemeVariant) color.Color {
-	var lightColor, darkColor string
-	if activeTheme != nil && activeTheme.settings != nil {
-		lightColor = lightSetting
-		darkColor = darkSetting
-	}
-
-	if variant == theme.VariantLight {
-		if col, err := parseHexColor(lightColor); err == nil {
-			return col
-		}
-		if col, err := parseHexColor(lightDefault); err == nil {
-			return col
-		}
-	} else {
-		if col, err := parseHexColor(darkColor); err == nil {
-			return col
-		}
-		if col, err := parseHexColor(darkDefault); err == nil {
-			return col
-		}
-	}
-	return color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-}
-
-// Active returns the active/success color
-func (c Colors) Active(variant fyne.ThemeVariant) color.Color {
-	if activeTheme != nil && activeTheme.settings != nil {
-		if variant == theme.VariantLight {
-			return c.getThemeColor(activeTheme.settings.LightSuccessColor, "", settings.DefaultLightSuccessColor, settings.DefaultDarkSuccessColor, variant)
-		}
-		return c.getThemeColor("", activeTheme.settings.DarkSuccessColor, settings.DefaultLightSuccessColor, settings.DefaultDarkSuccessColor, variant)
-	}
-	return c.getThemeColor("", "", settings.DefaultLightSuccessColor, settings.DefaultDarkSuccessColor, variant)
-}
-
-// Inactive returns the inactive/error color
-func (c Colors) Inactive(variant fyne.ThemeVariant) color.Color {
-	if activeTheme != nil && activeTheme.settings != nil {
-		if variant == theme.VariantLight {
-			return c.getThemeColor(activeTheme.settings.LightErrorColor, "", settings.DefaultLightErrorColor, settings.DefaultDarkErrorColor, variant)
-		}
-		return c.getThemeColor("", activeTheme.settings.DarkErrorColor, settings.DefaultLightErrorColor, settings.DefaultDarkErrorColor, variant)
-	}
-	return c.getThemeColor("", "", settings.DefaultLightErrorColor, settings.DefaultDarkErrorColor, variant)
-}
-
-// CardBackground returns the card background color
-func (c Colors) CardBackground(variant fyne.ThemeVariant) color.Color {
-	if activeTheme != nil && activeTheme.settings != nil {
-		if variant == theme.VariantLight {
-			return c.getThemeColor(activeTheme.settings.LightSurfaceColor, "", settings.DefaultLightSurfaceColor, settings.DefaultDarkSurfaceColor, variant)
-		}
-		return c.getThemeColor("", activeTheme.settings.DarkSurfaceColor, settings.DefaultLightSurfaceColor, settings.DefaultDarkSurfaceColor, variant)
-	}
-	return c.getThemeColor("", "", settings.DefaultLightSurfaceColor, settings.DefaultDarkSurfaceColor, variant)
-}
-
-// CardActiveBackground returns the background for active cards (tinted with success color)
-func (c Colors) CardActiveBackground(variant fyne.ThemeVariant) color.Color {
-	if variant == theme.VariantLight {
-		return color.NRGBA{R: 220, G: 242, B: 228, A: 255}
-	}
-	return color.NRGBA{R: 13, G: 35, B: 24, A: 255} // #0d2318
-}
-
-// Border returns the border color
-func (c Colors) Border(variant fyne.ThemeVariant) color.Color {
-	if activeTheme != nil && activeTheme.settings != nil {
-		if variant == theme.VariantLight {
-			return c.getThemeColor(activeTheme.settings.LightBorderColor, "", settings.DefaultLightBorderColor, settings.DefaultDarkBorderColor, variant)
-		}
-		return c.getThemeColor("", activeTheme.settings.DarkBorderColor, settings.DefaultLightBorderColor, settings.DefaultDarkBorderColor, variant)
-	}
-	return c.getThemeColor("", "", settings.DefaultLightBorderColor, settings.DefaultDarkBorderColor, variant)
-}
-
-// CardElevation returns a subtle shadow color for card depth
-func (c Colors) CardElevation(variant fyne.ThemeVariant) color.Color {
-	if variant == theme.VariantLight {
-		return color.NRGBA{R: 0, G: 0, B: 0, A: 20}
-	}
-	return color.NRGBA{R: 0, G: 0, B: 0, A: 102} // rgba(0,0,0,0.4)
-}
-
-// StatusSuccessBg returns a tinted background for success status
-func (c Colors) StatusSuccessBg(variant fyne.ThemeVariant) color.Color {
-	if variant == theme.VariantLight {
-		return color.NRGBA{R: 220, G: 242, B: 228, A: 255}
-	}
-	return color.NRGBA{R: 13, G: 35, B: 24, A: 255} // #0d2318
-}
-
-// StatusErrorBg returns a tinted background for error status
-func (c Colors) StatusErrorBg(variant fyne.ThemeVariant) color.Color {
-	if variant == theme.VariantLight {
-		return color.NRGBA{R: 252, G: 228, B: 227, A: 255}
-	}
-	return color.NRGBA{R: 31, G: 10, B: 10, A: 255} // #1f0a0a
-}
-
-// StatusInfoBg returns a tinted background for info status
-func (c Colors) StatusInfoBg(variant fyne.ThemeVariant) color.Color {
-	if variant == theme.VariantLight {
-		return color.NRGBA{R: 218, G: 234, B: 255, A: 255}
-	}
-	return color.NRGBA{R: 13, G: 31, B: 58, A: 255} // #0d1f3a
-}
-
-// AppColors provides easy access to theme colors
-var AppColors = Colors{}
