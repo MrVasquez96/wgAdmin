@@ -29,7 +29,7 @@ __Note:__ This is has only been tested with ubuntu based OS. Use `make build` an
 ```bash
 git clone https://github.com/MrVasquez96/wgAdmin
 cd wgAdmin
-make install
+make build install
 ```
 1. Checks if `build/.build_done` file exists. 
 2. Builds from source if missing and install destop app for linux.
