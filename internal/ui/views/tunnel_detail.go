@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -24,16 +25,17 @@ import (
 // detailActions are the operations the detail pane can trigger. They are
 // supplied by MainView so the pane stays a pure renderer.
 type detailActions struct {
-	OnToggle func(name string, up bool)
-	OnScan   func(name, ip string)
-	OnPeers  func(name string)
-	OnEdit   func(name string)
-	OnConfig func(name string)
-	OnDelete func(name string)
-	OnCopy   func(label, value string)
-	OnPeerQR func(tunnel, publicKey string)
-	OnNew    func()
-	OnImport func()
+	OnToggle   func(name string, up bool)
+	OnScan     func(name, ip string)
+	OnPeers    func(name string)
+	OnEdit     func(name string)
+	OnConfig   func(name string)
+	OnDelete   func(name string)
+	OnCopy     func(label, value string)
+	OnPeerQR   func(tunnel, publicKey string)
+	OnNew      func()
+	OnImport   func()
+	OnRelaunch func()
 }
 
 // tunnelDetail renders the right-hand pane for one tunnel.
@@ -41,226 +43,262 @@ type tunnelDetail struct {
 	lang    *lang.Language
 	actions detailActions
 
+	// root is whether this process can read the kernel at all. Without it the
+	// fix for missing telemetry is relaunching; with it, missing telemetry
+	// just means no tunnel is up (or a real error worth showing).
+	root bool
+
 	// peerRows backs the table; the table reads it through a pointer so rows
 	// can be refreshed without rebuilding the widget.
 	peerRows []peerRow
+	// peers keeps the table's sort order across rebuilds.
+	peers peerTable
 }
 
 func newTunnelDetail(l *lang.Language, actions detailActions) *tunnelDetail {
-	return &tunnelDetail{lang: l, actions: actions}
+	return &tunnelDetail{lang: l, actions: actions, root: IsRoot()}
 }
 
 // emptyState is shown when nothing is selected, there are no tunnels at all, or
-// the filter excludes everything. Each case gets its own wording and, where
-// useful, its own call to action.
+// the filter excludes everything. Each case gets its own wording, illustration
+// and, where useful, its own call to action.
 func (d *tunnelDetail) emptyState(titleKey, bodyKey string, withActions bool) fyne.CanvasObject {
-	title := wgwidget.Title(d.lang.T(titleKey), 17)
-	title.Alignment = fyne.TextAlignCenter
-
-	body := widget.NewLabel(d.lang.T(bodyKey))
-	body.Alignment = fyne.TextAlignCenter
-	body.Wrapping = fyne.TextWrapWord
-	body.Importance = widget.LowImportance
-
-	items := []fyne.CanvasObject{
-		container.NewCenter(title),
-		container.NewCenter(container.New(
-			layout.NewGridWrapLayout(fyne.NewSize(360, body.MinSize().Height*2)), body)),
+	art := wgtheme.IconEmptyTunnels
+	if titleKey == lang.Main_no_match_title {
+		art = wgtheme.IconEmptySearch
 	}
-
+	var actions []fyne.CanvasObject
 	if withActions {
-		newBtn := widget.NewButtonWithIcon(d.lang.T(lang.Main_add_tunnel), wgtheme.IconAdd, d.actions.OnNew)
-		newBtn.Importance = widget.HighImportance
-		importBtn := widget.NewButtonWithIcon(d.lang.T(lang.Main_import), wgtheme.IconImport, d.actions.OnImport)
-		items = append(items, container.NewCenter(
-			container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceMD), newBtn, importBtn)))
+		actions = []fyne.CanvasObject{
+			wgwidget.NewButton(d.lang.T(lang.Main_add_tunnel), wgtheme.IconAdd, wgwidget.Primary, d.actions.OnNew),
+			wgwidget.NewButton(d.lang.T(lang.Main_import), wgtheme.IconImport, wgwidget.Secondary, d.actions.OnImport),
+		}
 	}
-
-	return container.NewCenter(container.New(
-		layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG), items...))
+	return wgwidget.EmptyState(art, d.lang.T(titleKey), d.lang.T(bodyKey), actions...)
 }
 
 // build renders the full detail pane for iface. cfg may be nil when the config
-// could not be parsed; live carries the kernel's view when it is available.
+// could not be parsed; snap carries the kernel's view when it is available.
 func (d *tunnelDetail) build(iface config.Interface, cfg *config.Config,
-	snap wgstat.Snapshot, rate wgstat.Sample, history []wgstat.Sample, configPath string) fyne.CanvasObject {
+	snap wgstat.Snapshot, rate wgstat.Sample, history []wgstat.Sample, configPath string) *container.Scroll {
 
 	dev, hasDev := snap.Device(iface.Name)
 	live := snap.Available && hasDev && iface.Active
 
 	sections := []fyne.CanvasObject{
-		d.header(iface),
-		d.metrics(iface, dev, live, snap, rate, history),
-		wgwidget.Hairline(),
-		wgwidget.SectionHeader(d.lang.T(lang.Detail_section_interface)),
-		d.interfaceGrid(iface, cfg, dev, live, configPath),
+		d.header(iface, cfg),
+		d.telemetry(iface, dev, live, snap, rate, history),
+		d.section(wgtheme.IconRoute, d.lang.T(lang.Detail_section_interface), nil,
+			d.interfaceGrid(iface, cfg, dev, live, configPath)),
+		d.peersSection(iface, cfg, dev, live),
 	}
-
-	sections = append(sections,
-		wgwidget.SectionHeader(d.lang.T(lang.Detail_section_peers)),
-		d.peers(iface, cfg, dev, live),
-	)
-
 	if routes := d.routes(cfg); routes != nil {
-		sections = append(sections,
-			wgwidget.SectionHeader(d.lang.T(lang.Detail_section_routes)),
-			routes,
-		)
+		sections = append(sections, routes)
 	}
 
-	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG), sections...)
+	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXL+4), sections...)
 	return container.NewVScroll(container.New(
-		layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceLG, wgtheme.SpaceLG), body))
+		layout.NewCustomPaddedLayout(wgtheme.SpaceXL, wgtheme.SpaceXL+8, wgtheme.SpaceXL+4, wgtheme.SpaceXL+4), body))
 }
 
-// header is the tunnel name, its state pill and the action bar. The primary
-// up/down action is visually separated from the secondary operations so the
-// five equal-weight buttons of the old card become a clear hierarchy.
-func (d *tunnelDetail) header(iface config.Interface) fyne.CanvasObject {
-	name := wgwidget.Title(iface.Name, 21)
+// section is a titled block: heading row, then content.
+func (d *tunnelDetail) section(icon *wgtheme.Icon, title string, trailing []fyne.CanvasObject, content fyne.CanvasObject) fyne.CanvasObject {
+	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD+2),
+		wgwidget.SectionTitle(icon, title, trailing...),
+		content)
+}
 
-	pill := wgwidget.StatePill(iface.Active,
-		d.lang.T(lang.Card_state_up), d.lang.T(lang.Card_state_down))
+// header is the tunnel's identity and its actions. Bringing the tunnel up or
+// down is the one primary action and sits alone on the right; the routine
+// operations sit under the name, and the rare or destructive ones (config,
+// delete) live in the overflow menu instead of a loud red button.
+func (d *tunnelDetail) header(iface config.Interface, cfg *config.Config) fyne.CanvasObject {
+	p := wgtheme.Current()
 
-	titleRow := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceLG),
+	// Identity tile: the tunnel glyph on a tinted square.
+	tone, glyph := p.TextDim, wgtheme.IconTunnelDown
+	if iface.Active {
+		tone, glyph = p.Success, wgtheme.IconTunnelUp
+	}
+	tileBg := canvas.NewRectangle(p.Tint(tone, 0.14))
+	tileBg.CornerRadius = wgtheme.RadiusLG
+	tileBg.StrokeColor = p.Tint(tone, 0.30)
+	tileBg.StrokeWidth = 1
+	glyphImg := canvas.NewImageFromResource(glyph.For(tone))
+	glyphImg.FillMode = canvas.ImageFillContain
+	glyphImg.SetMinSize(fyne.NewSize(26, 26))
+	tile := container.NewStack(
+		container.New(layout.NewGridWrapLayout(fyne.NewSize(48, 48)), tileBg),
+		container.NewCenter(glyphImg))
+
+	name := wgwidget.Title(iface.Name, wgtheme.TextSize(wgtheme.TextDisplay))
+	name.FontSource = wgtheme.Font(wgtheme.WeightSemiBold)
+	pill := wgwidget.StatusPill(iface.Active, d.lang.T(lang.Card_state_up), d.lang.T(lang.Card_state_down))
+	titleRow := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceMD+2),
 		name, container.NewCenter(pill))
 
-	var toggle *widget.Button
+	sub := wgwidget.DimValue(d.subtitle(iface, cfg))
+	identity := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceLG+2),
+		container.NewCenter(tile),
+		container.NewVBox(layout.NewSpacer(), titleRow, sub, layout.NewSpacer()))
+
+	var toggle *wgwidget.Button
 	if iface.Active {
-		toggle = widget.NewButtonWithIcon(d.lang.T(lang.Card_btn_deactivate), wgtheme.IconStop, func() {
+		toggle = wgwidget.NewButton(d.lang.T(lang.Card_btn_deactivate), wgtheme.IconStop, wgwidget.Danger, func() {
 			d.actions.OnToggle(iface.Name, false)
 		})
-		toggle.Importance = widget.DangerImportance
 	} else {
-		toggle = widget.NewButtonWithIcon(d.lang.T(lang.Card_btn_activate), wgtheme.IconPlay, func() {
+		toggle = wgwidget.NewButton(d.lang.T(lang.Card_btn_activate), wgtheme.IconPlay, wgwidget.Success, func() {
 			d.actions.OnToggle(iface.Name, true)
 		})
-		toggle.Importance = widget.SuccessImportance
 	}
+	toggle.Scale = wgwidget.ScaleLG
+	toggle.Tooltip = "Space"
 
-	scan := widget.NewButtonWithIcon(d.lang.T(lang.Card_btn_scan), wgtheme.IconScan, func() {
+	top := container.NewBorder(nil, nil, identity, container.NewCenter(toggle))
+
+	scan := wgwidget.NewButton(d.lang.T(lang.Card_btn_scan), wgtheme.IconScan, wgwidget.Secondary, func() {
 		d.actions.OnScan(iface.Name, iface.IP)
 	})
-	if iface.IP == "unknown" {
+	scan.Tooltip = "Ctrl+S"
+	// A scan goes out through the tunnel, so it only makes sense while the
+	// tunnel is up; the tooltip says so rather than leaving a dead button.
+	if !canScan(iface) {
 		scan.Disable()
+		scan.Tooltip = d.lang.T(lang.Detail_scan_needs_up)
 	}
-	peers := widget.NewButtonWithIcon(d.lang.T(lang.Card_btn_peers), wgtheme.IconPeers, func() {
+	peers := wgwidget.NewButton(d.lang.T(lang.Card_btn_peers), wgtheme.IconPeers, wgwidget.Secondary, func() {
 		d.actions.OnPeers(iface.Name)
 	})
-	edit := widget.NewButtonWithIcon(d.lang.T(lang.Card_btn_edit), wgtheme.IconEdit, func() {
+	peers.Tooltip = "Ctrl+P"
+	edit := wgwidget.NewButton(d.lang.T(lang.Card_btn_edit), wgtheme.IconEdit, wgwidget.Secondary, func() {
 		d.actions.OnEdit(iface.Name)
 	})
-	cfgBtn := widget.NewButtonWithIcon(d.lang.T(lang.Detail_btn_config), wgtheme.IconDoc, func() {
-		d.actions.OnConfig(iface.Name)
+	edit.Tooltip = "Ctrl+E"
+
+	var more *wgwidget.Button
+	more = wgwidget.NewIconButton(wgtheme.IconMoreVertical, d.lang.T(lang.Detail_more), func() {
+		wgwidget.ShowMenu(more, []wgwidget.MenuItem{
+			{Label: d.lang.T(lang.Detail_menu_config), Icon: wgtheme.IconDoc,
+				Action: func() { d.actions.OnConfig(iface.Name) }},
+			{Separator: true},
+			{Label: d.lang.T(lang.Detail_menu_delete), Icon: wgtheme.IconTrash, Danger: true,
+				Action: func() { d.actions.OnDelete(iface.Name) }},
+		})
 	})
-	del := widget.NewButtonWithIcon(d.lang.T(lang.Card_btn_delete), wgtheme.IconTrash, func() {
-		d.actions.OnDelete(iface.Name)
-	})
-	del.Importance = widget.DangerImportance
 
-	for _, b := range []*widget.Button{scan, peers, edit, cfgBtn} {
-		b.Importance = widget.MediumImportance
-	}
+	actions := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM+2),
+		scan, peers, edit, more)
 
-	actions := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM),
-		toggle,
-		wgwidget.VHairline(),
-		scan, peers, edit, cfgBtn,
-		layout.NewSpacer(),
-		del,
-	)
-
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD), titleRow, actions)
+	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG+2), top, actions)
 }
 
-// metrics is the row of live counters. When telemetry is unavailable it is
-// replaced by an explanation, because a row of dashes with no reason is worse
-// than no row at all.
-func (d *tunnelDetail) metrics(iface config.Interface, dev wgstat.Device, live bool,
+// canScan reports whether a tunnel can be scanned: it must be up, and its
+// address known so the networks to probe can be worked out.
+func canScan(iface config.Interface) bool {
+	return iface.Active && iface.IP != "" && iface.IP != "unknown"
+}
+
+// subtitle is the line under the tunnel name: its address and peer count.
+func (d *tunnelDetail) subtitle(iface config.Interface, cfg *config.Config) string {
+	parts := []string{}
+	if iface.IP != "" && iface.IP != "unknown" {
+		parts = append(parts, iface.IP)
+	}
+	if cfg != nil {
+		parts = append(parts, fmt.Sprintf("%d %s", len(cfg.Peers), strings.ToLower(d.lang.T(lang.Detail_metric_peers))))
+	}
+	return strings.Join(parts, "  ·  ")
+}
+
+// telemetry is the live picture: stat tiles and the traffic chart when the
+// kernel can be read and the tunnel is up, otherwise an explanation of why
+// there is nothing to show — a row of dashes with no reason is worse than no
+// row at all.
+func (d *tunnelDetail) telemetry(iface config.Interface, dev wgstat.Device, live bool,
 	snap wgstat.Snapshot, rate wgstat.Sample, history []wgstat.Sample) fyne.CanvasObject {
 
 	p := wgtheme.Current()
 
-	if !snap.Available {
-		return d.telemetryNotice()
+	if snap.Taken.IsZero() {
+		// The first refresh has not landed yet; say nothing rather than guess.
+		return container.NewStack()
 	}
 
-	peerCount, online := 0, 0
-	rx, tx, throughput := wgstat.Dash, wgstat.Dash, wgstat.Dash
-
-	if live {
-		peerCount = len(dev.Peers)
-		online = dev.OnlinePeers(time.Now())
-		rx = wgstat.FormatBytes(dev.RX)
-		tx = wgstat.FormatBytes(dev.TX)
-		if rate.RX > 0 || rate.TX > 0 {
-			throughput = wgstat.FormatRate(rate.RX + rate.TX)
+	if !snap.Available && !d.root {
+		var action *wgwidget.Button
+		if d.actions.OnRelaunch != nil {
+			action = wgwidget.NewButton(d.lang.T(lang.Detail_relaunch_root), wgtheme.IconLock,
+				wgwidget.Secondary, d.actions.OnRelaunch)
 		}
+		return wgwidget.Banner(wgwidget.BannerWarning,
+			d.lang.T(lang.Detail_telemetry_off), d.lang.T(lang.Detail_telemetry_off_detail), action)
 	}
 
-	onlineTone := p.TextPrimary
-	if live && online > 0 {
-		onlineTone = p.Success
-	}
-
-	tiles := []fyne.CanvasObject{
-		wgwidget.Metric(d.lang.T(lang.Detail_metric_peers), strconv.Itoa(peerCount), ""),
-		wgwidget.ToneMetric(d.lang.T(lang.Detail_metric_online), strconv.Itoa(online), "", onlineTone),
-		wgwidget.Metric(d.lang.T(lang.Detail_metric_rx), rx, ""),
-		wgwidget.Metric(d.lang.T(lang.Detail_metric_tx), tx, ""),
-		wgwidget.Metric(d.lang.T(lang.Detail_metric_rate), throughput, ""),
+	if !snap.Available && iface.Active && snap.Err != nil {
+		// Root, tunnel up, and still nothing: that is a real failure, so
+		// show it instead of a hint that would not help.
+		return wgwidget.Banner(wgwidget.BannerError,
+			d.lang.T(lang.Detail_telemetry_off), snap.Err.Error(), nil)
 	}
 
 	if !live {
-		// An inactive tunnel has no counters at all; show dashes rather than
-		// zeroes so it never reads as "up but silent".
-		tiles = []fyne.CanvasObject{
-			wgwidget.Metric(d.lang.T(lang.Detail_metric_peers), wgstat.Dash, ""),
-			wgwidget.Metric(d.lang.T(lang.Detail_metric_online), wgstat.Dash, ""),
-			wgwidget.Metric(d.lang.T(lang.Detail_metric_rx), wgstat.Dash, ""),
-			wgwidget.Metric(d.lang.T(lang.Detail_metric_tx), wgstat.Dash, ""),
-			wgwidget.Metric(d.lang.T(lang.Detail_metric_rate), wgstat.Dash, ""),
-		}
+		return wgwidget.Banner(wgwidget.BannerInfo,
+			d.lang.T(lang.Detail_telemetry_off), d.lang.T(lang.Detail_tunnel_down_hint), nil)
 	}
 
-	row := container.New(layout.NewGridLayoutWithColumns(len(tiles)), tiles...)
-
-	if live && len(history) > 1 {
-		values := make([]float64, 0, len(history))
-		for _, s := range history {
-			values = append(values, s.RX+s.TX)
-		}
-		spark := wgwidget.NewSparkline(p.Accent, fyne.NewSize(0, 26))
-		spark.SetSamples(values)
-		row = container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD), row, spark.Build())
+	online := dev.OnlinePeers(time.Now())
+	onlineTone := p.TextPrimary
+	if online > 0 {
+		onlineTone = p.Success
+	}
+	rxV, rxU := splitUnit(wgstat.FormatBytes(dev.RX))
+	txV, txU := splitUnit(wgstat.FormatBytes(dev.TX))
+	rateV, rateU := wgstat.Dash, ""
+	if rate.RX > 0 || rate.TX > 0 {
+		rateV, rateU = splitUnit(wgstat.FormatRate(rate.RX + rate.TX))
 	}
 
-	return wgwidget.RaisedPanel(row)
+	tiles := container.New(layout.NewGridLayoutWithColumns(5),
+		wgwidget.StatTile(wgtheme.IconPeers, d.lang.T(lang.Detail_metric_peers),
+			strconv.Itoa(len(dev.Peers)), "", p.TextPrimary),
+		wgwidget.StatTile(wgtheme.IconSignal, d.lang.T(lang.Detail_metric_online),
+			strconv.Itoa(online), d.lang.Tf(lang.Detail_metric_of, len(dev.Peers)), onlineTone),
+		wgwidget.StatTile(wgtheme.IconArrowDown, d.lang.T(lang.Detail_metric_rx), rxV, rxU, p.TextPrimary),
+		wgwidget.StatTile(wgtheme.IconArrowUp, d.lang.T(lang.Detail_metric_tx), txV, txU, p.TextPrimary),
+		wgwidget.StatTile(wgtheme.IconActivity, d.lang.T(lang.Detail_metric_rate), rateV, rateU, p.Accent),
+	)
+
+	if len(history) < 2 {
+		return tiles
+	}
+	rx := make([]float64, 0, len(history))
+	tx := make([]float64, 0, len(history))
+	for _, s := range history {
+		rx = append(rx, s.RX)
+		tx = append(tx, s.TX)
+	}
+	chart := wgwidget.NewTrafficChart(110, d.lang.T(lang.Detail_metric_rx), d.lang.T(lang.Detail_metric_tx), wgstat.FormatRate)
+	chart.SetSeries(rx, tx)
+
+	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD+2),
+		tiles, wgwidget.Card(chart, 0))
 }
 
-// telemetryNotice explains why live numbers are missing instead of silently
-// showing nothing.
-func (d *tunnelDetail) telemetryNotice() fyne.CanvasObject {
-	p := wgtheme.Current()
-
-	title := wgwidget.Caption(d.lang.T(lang.Detail_telemetry_off))
-	title.Color = p.Warning
-
-	body := widget.NewLabel(d.lang.T(lang.Detail_telemetry_off_detail))
-	body.Wrapping = fyne.TextWrapWord
-	body.Importance = widget.LowImportance
-
-	return wgwidget.RaisedPanel(container.New(
-		layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM), title, body))
+// splitUnit separates "1.4 GiB" into "1.4" and "GiB" for the stat tiles.
+func splitUnit(s string) (string, string) {
+	if i := strings.LastIndexByte(s, ' '); i > 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
 }
 
 // interfaceGrid lists the interface's own settings, preferring live values
 // where the kernel and the file can disagree (notably the listen port, which
-// wg-quick assigns dynamically when the config leaves it unset).
+// wg-quick assigns dynamically when the config leaves it unset). Every value
+// copies itself when clicked.
 func (d *tunnelDetail) interfaceGrid(iface config.Interface, cfg *config.Config,
 	dev wgstat.Device, live bool, configPath string) fyne.CanvasObject {
-
-	const labelWidth = 96
 
 	address := iface.IP
 	endpoint, mtu, dns, table := wgstat.Dash, wgstat.Dash, wgstat.Dash, wgstat.Dash
@@ -316,75 +354,75 @@ func (d *tunnelDetail) interfaceGrid(iface config.Interface, cfg *config.Config,
 		pubKey = wgstat.Dash
 	}
 
-	// Every row gets a copy action. Rows with nothing worth copying (a dash,
-	// or the "auto" placeholder standing in for an unset port) keep an empty
-	// slot of the same size so the column of values stays evenly spaced.
-	field := func(labelKey, value string) fyne.CanvasObject {
+	// A dash, or the "auto" placeholder standing in for an unset port, has
+	// nothing worth copying, so those fields are read-only.
+	field := func(icon *wgtheme.Icon, labelKey, value string) fyne.CanvasObject {
 		label := d.lang.T(labelKey)
-		var onCopy func()
+		var onCopy func(string)
 		if value != wgstat.Dash && value != d.lang.T(lang.Detail_port_auto) {
-			onCopy = func() { d.copyField(label, value) }
+			onCopy = func(v string) { d.copyField(label, v) }
 		}
-		return wgwidget.KeyValueCopy(label, value, labelWidth, onCopy)
+		return wgwidget.NewCopyField(icon, label, value, onCopy)
 	}
 
-	rows := []fyne.CanvasObject{
-		field(lang.Detail_label_address, address),
-		field(lang.Detail_label_endpoint, endpoint),
-		field(lang.Detail_label_port, port),
-		field(lang.Detail_label_mtu, mtu),
-		field(lang.Detail_label_dns, dns),
-		field(lang.Detail_label_table, table),
-	}
-
-	if pubKey != wgstat.Dash {
-		key := pubKey
-		rows = append(rows, wgwidget.KeyValueCopy(
-			d.lang.T(lang.Detail_label_public_key), key, labelWidth, func() {
-				d.actions.OnCopy(d.lang.T(lang.Status_copied_pubkey), key)
-			}))
-	}
-
-	rows = append(rows, wgwidget.KeyValueCopy(
-		d.lang.T(lang.Detail_label_config), configPath, labelWidth, func() {
-			d.actions.OnCopy(d.lang.T(lang.Common_copied), configPath)
-		}))
-
-	return wgwidget.Panel(container.New(
-		layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM), rows...), nil)
+	grid := container.New(layout.NewGridLayoutWithColumns(2),
+		field(wgtheme.IconRoute, lang.Detail_label_address, address),
+		field(wgtheme.IconGlobe, lang.Detail_label_endpoint, endpoint),
+		field(wgtheme.IconPlug, lang.Detail_label_port, port),
+		field(wgtheme.IconRuler, lang.Detail_label_mtu, mtu),
+		field(wgtheme.IconDNS, lang.Detail_label_dns, dns),
+		field(wgtheme.IconTable, lang.Detail_label_table, table),
+		field(wgtheme.IconKey, lang.Detail_label_public_key, pubKey),
+		field(wgtheme.IconDoc, lang.Detail_label_config, configPath),
+	)
+	return wgwidget.Card(container.New(layout.NewCustomPaddedLayout(-4, -4, -4, -4), grid), 0)
 }
 
-// copyField copies a value and names it in the status strip, which doubles as
-// the way to read a value the layout had to truncate.
+// copyField copies a value and names it in a toast, which doubles as the way
+// to read a value the layout had to truncate.
 func (d *tunnelDetail) copyField(label, value string) {
 	d.actions.OnCopy(d.lang.Tf(lang.Status_copied_field, label, value), value)
 }
 
-// peers renders the live peer table, or an explanation when there are none.
-//
-// Each row carries a QR action, so a client config can be shown whenever it is
-// needed rather than only in the session that created the peer.
-func (d *tunnelDetail) peers(iface config.Interface, cfg *config.Config, dev wgstat.Device, live bool) fyne.CanvasObject {
+// peersSection is the live peer table, or an invitation to add the first
+// peer. Each row carries a QR action, so a client config can be shown
+// whenever it is needed rather than only in the session that created it.
+func (d *tunnelDetail) peersSection(iface config.Interface, cfg *config.Config, dev wgstat.Device, live bool) fyne.CanvasObject {
 	var configured []config.PeerConfig
 	if cfg != nil {
 		configured = cfg.Peers
 	}
+	title := d.lang.T(lang.Detail_section_peers)
 
 	if len(configured) == 0 {
-		return emptyNote(d.lang.T(lang.Detail_no_peers))
+		add := wgwidget.NewButton(d.lang.T(lang.Detail_add_peer), wgtheme.IconAdd, wgwidget.Primary, func() {
+			d.actions.OnPeers(iface.Name)
+		})
+		return d.section(wgtheme.IconPeers, title, nil, wgwidget.Card(
+			wgwidget.EmptyState(wgtheme.IconEmptyPeers, d.lang.T(lang.Detail_no_peers), "", add), 0))
 	}
 
 	d.peerRows = buildPeerRows(configured, dev, live, d.lang)
 
-	table := newPeerTable(&d.peerRows, d.lang,
+	manage := wgwidget.NewButton(d.lang.T(lang.Detail_manage_peers), wgtheme.IconEdit, wgwidget.Ghost, func() {
+		d.actions.OnPeers(iface.Name)
+	})
+	manage.Scale = wgwidget.ScaleSM
+
+	table := d.peers.build(&d.peerRows, d.lang,
 		func(publicKey string) { d.actions.OnPeerQR(iface.Name, publicKey) },
 		func(column, value string) { d.copyField(column, value) },
 	)
 
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXS),
-		fixedHeight(table, peerTableHeight(len(d.peerRows))),
-		formHint(d.lang.T(lang.Detail_peers_hint)),
-	)
+	hint := widget.NewLabel(d.lang.T(lang.Detail_peers_hint))
+	hint.Importance = widget.LowImportance
+
+	return d.section(wgtheme.IconPeers, title,
+		[]fyne.CanvasObject{wgwidget.Badge(strconv.Itoa(len(d.peerRows)), false), manage},
+		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXS),
+			fixedHeight(table, table.Height(len(d.peerRows), 10)),
+			container.New(layout.NewCustomPaddedLayout(-2, 0, -4, 0), hint),
+		))
 }
 
 // routes summarises every network reachable through the tunnel, which is the
@@ -405,7 +443,6 @@ func (d *tunnelDetail) routes(cfg *config.Config) fyne.CanvasObject {
 			}
 		}
 	}
-
 	if len(nets) == 0 {
 		return nil
 	}
@@ -413,13 +450,19 @@ func (d *tunnelDetail) routes(cfg *config.Config) fyne.CanvasObject {
 
 	chips := make([]fyne.CanvasObject, 0, len(nets))
 	for _, n := range nets {
-		chips = append(chips, wgwidget.NeutralChip(n))
+		cidr := n
+		chips = append(chips, wgwidget.NewCopyChip(cidr, func() {
+			d.copyField(d.lang.T(lang.Detail_section_routes), cidr)
+		}))
 	}
 
-	return container.NewGridWrap(fyne.NewSize(150, 22), chips...)
+	return d.section(wgtheme.IconRoute, d.lang.T(lang.Detail_section_routes),
+		[]fyne.CanvasObject{wgwidget.Badge(strconv.Itoa(len(nets)), false)},
+		container.NewGridWrap(fyne.NewSize(156, 28), chips...))
 }
 
-// summaryLine is the one-line description used in the sidebar row's meta slot.
+// summaryLine is the sidebar row's badge: online/total peers when live,
+// otherwise the configured peer count.
 func summaryLine(iface config.Interface, cfg *config.Config, dev wgstat.Device, live bool) string {
 	if live {
 		online := dev.OnlinePeers(time.Now())

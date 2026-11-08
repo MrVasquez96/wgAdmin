@@ -169,17 +169,15 @@ func (f *TunnelForm) getTunnelName() string {
 	return f.nameEntry.Text
 }
 
-// Show displays the tunnel form
+// Show opens the interface form as a sheet over the main window.
 func (f *TunnelForm) Show() {
 	title := f.lang.T(lang.Tunnel_form_title_new)
 	if f.isEdit {
 		title = f.lang.Tf(lang.Tunnel_form_title_edit, f.name)
 	}
+	win := f.window
 
-	win := fyne.CurrentApp().NewWindow(title)
-	win.Resize(fyne.NewSize(700, 750))
-
-	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T(lang.Tunnel_btn_generate_keys), wgtheme.IconRefresh, func() {
+	generateKeyBtn := wgwidget.NewButton(f.lang.T(lang.Tunnel_btn_generate_keys), wgtheme.IconRefresh, wgwidget.Secondary, func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
 			helpers.ShowError(err, win)
@@ -189,87 +187,94 @@ func (f *TunnelForm) Show() {
 		f.publicKeyLabel.SetText(pub)
 	})
 
-	copyPubKeyBtn := widget.NewButtonWithIcon("", wgtheme.IconCopy, func() {
+	copyPubKeyBtn := wgwidget.NewIconButton(wgtheme.IconCopy, f.lang.T(lang.Common_copy), func() {
 		if f.publicKeyLabel.Text != "" && f.publicKeyLabel.Text != f.lang.T(lang.Tunnel_public_key_invalid) {
 			win.Clipboard().SetContent(f.publicKeyLabel.Text)
+			wgwidget.ShowToast(win, wgwidget.ToastSuccess, f.lang.T(lang.Status_copied_pubkey))
 		}
 	})
-
-	privKeyRow := container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry)
-	pubKeyRow := container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyLabel)
+	f.publicKeyLabel.TextStyle = fyne.TextStyle{Monospace: true}
+	f.publicKeyLabel.Truncation = fyne.TextTruncateEllipsis
 
 	f.postUpEntry.MultiLine = true
 	f.postUpEntry.SetMinRowsVisible(3)
 	f.postDownEntry.MultiLine = true
 	f.postDownEntry.SetMinRowsVisible(3)
 
-	// Grouped into the four things a tunnel actually consists of, rather than
-	// one undifferentiated column of nine fields.
-	identityForm := widget.NewForm(
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_name), f.nameEntry),
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_private_key), privKeyRow),
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_public_key), pubKeyRow),
+	// Grouped into the things a tunnel actually consists of, rather than one
+	// undifferentiated column of fields.
+	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXL+6),
+		wgwidget.FormSection(wgtheme.IconKey, f.lang.T(lang.Tunnel_section_identity), "",
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_name), f.nameEntry, ""),
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_private_key),
+				container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry), ""),
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_public_key),
+				container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyLabel), ""),
+		),
+		wgwidget.FormSection(wgtheme.IconRoute, f.lang.T(lang.Tunnel_section_network), "",
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_address), f.addressEntry, ""),
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_public_endpoint), f.publicEndpointEntry, ""),
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_dns), f.dnsEntry, ""),
+			wgwidget.FieldRow(
+				wgwidget.Field(f.lang.T(lang.Tunnel_label_listen_port), f.listenPortEntry, ""),
+				wgwidget.Field(f.lang.T(lang.Tunnel_label_mtu), f.mtuEntry, ""),
+			),
+		),
+		wgwidget.FormSection(wgtheme.IconTerminal, f.lang.T(lang.Tunnel_section_hooks), f.lang.T(lang.Tunnel_hooks_hint),
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_post_up), f.postUpEntry, ""),
+			wgwidget.Field(f.lang.T(lang.Tunnel_label_post_down), f.postDownEntry, ""),
+		),
 	)
 
-	networkForm := widget.NewForm(
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_address), f.addressEntry),
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_dns), f.dnsEntry),
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_public_endpoint), f.publicEndpointEntry),
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_mtu), f.mtuEntry),
-	)
-
-	hooksForm := widget.NewForm(
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_post_up), f.postUpEntry),
-		widget.NewFormItem(f.lang.T(lang.Tunnel_label_post_down), f.postDownEntry),
-	)
-
-	interfaceForm := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_identity)),
-		identityForm,
-		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_network)),
-		networkForm,
-		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_hooks)),
-		formHint(f.lang.T(lang.Tunnel_hooks_hint)),
-		hooksForm,
-	)
-
-	saveBtn := widget.NewButtonWithIcon(f.lang.T(lang.Common_save), wgtheme.IconImport, func() {
-		cfg, errs := f.validate()
-		if len(errs) > 0 {
-			helpers.ShowError(errs[0], win)
-			return
+	var sheet *wgwidget.Surface
+	cancelBtn := wgwidget.NewButton(f.lang.T(lang.Common_cancel), nil, wgwidget.Secondary, func() { sheet.Close() })
+	saveBtn := wgwidget.NewButton(f.lang.T(lang.Common_save), wgtheme.IconCheck, wgwidget.Primary, func() {
+		if f.save(win) {
+			sheet.Close()
 		}
-
-		name := f.getTunnelName()
-		if err := f.onSave(name, cfg); err != nil {
-			helpers.ShowError(err, win)
-			return
-		}
-		f.generateClientConfigs(name, cfg, win)
-		win.Close()
 	})
-	saveBtn.Importance = widget.HighImportance
 
-	cancelBtn := widget.NewButton(f.lang.T(lang.Common_cancel), func() {
-		if f.onCancel != nil {
+	sheet = wgwidget.ShowSheet(win, title, wgwidget.SheetWide, body, cancelBtn, saveBtn)
+	f.closeHooks(sheet)
+	if !f.isEdit {
+		win.Canvas().Focus(f.nameEntry)
+	}
+}
+
+// save validates and writes the tunnel, reporting problems over the sheet.
+// It returns whether the sheet can close.
+func (f *TunnelForm) save(win fyne.Window) bool {
+	cfg, errs := f.validate()
+	if len(errs) > 0 {
+		helpers.ShowError(errs[0], win)
+		return false
+	}
+	name := f.getTunnelName()
+	if err := f.onSave(name, cfg); err != nil {
+		helpers.ShowError(err, win)
+		return false
+	}
+	f.generateClientConfigs(name, cfg, win)
+	return true
+}
+
+// closeHooks runs onCancel when the sheet is dismissed without saving.
+func (f *TunnelForm) closeHooks(sheet *wgwidget.Surface) {
+	saved := false
+	origSave := f.onSave
+	f.onSave = func(name string, cfg *config.Config) error {
+		err := origSave(name, cfg)
+		if err == nil {
+			saved = true
+		}
+		return err
+	}
+	sheet.OnClose = func() {
+		f.onSave = origSave
+		if !saved && f.onCancel != nil {
 			f.onCancel()
 		}
-		win.Close()
-	})
-
-	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
-
-	content := container.NewBorder(
-		nil,
-		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), buttons),
-		nil, nil,
-		container.NewVScroll(container.New(
-			layout.NewCustomPaddedLayout(0, wgtheme.SpaceLG, 0, wgtheme.SpaceMD), interfaceForm)),
-	)
-
-	win.SetContent(container.New(layout.NewCustomPaddedLayout(
-		wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceXL), content))
-	win.Show()
+	}
 }
 
 // formHint renders the explanatory line under a section header.
@@ -280,154 +285,136 @@ func formHint(text string) fyne.CanvasObject {
 	return l
 }
 
-// ShowPeers displays the peers editing form
+// peer list columns
+const (
+	plColName = iota
+	plColAllowed
+	plColEndpoint
+	plColClient
+)
+
+// ShowPeers opens the peer editor as a sheet: the tunnel's peers in a table
+// with QR, edit and delete actions per row, and Add peer above it.
 func (f *TunnelForm) ShowPeers() {
 	title := f.lang.T(lang.Tunnel_peers_window_title)
 	if f.isEdit {
 		title = f.lang.Tf(lang.Tunnel_edit_peer_title, f.name)
 	}
-
-	win := fyne.CurrentApp().NewWindow(title)
-	win.Resize(fyne.NewSize(700, 750))
+	win := f.window
+	l := f.lang
 
 	// Peers created in earlier sessions can still be provisioned: their private
 	// keys live in the client configs wgAdmin wrote at the time.
 	f.storedKeys = storedPeerKeys(f.clientConfigDir, f.getTunnelName())
 
-	f.peersList = widget.NewList(
-		func() int { return len(f.peers) },
-		func() fyne.CanvasObject { return newPeerListRow() },
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			row, ok := obj.(*peerListRow)
-			if !ok || id >= len(f.peers) {
-				return
-			}
-
-			peer := f.peers[id]
-			pubKeyStr := peer.PublicKey.String()
-
+	var table *wgwidget.DataTable
+	cols := []wgwidget.Column{
+		{Title: l.T(lang.Detail_col_peer), MinWidth: 120, Weight: 1},
+		{Title: l.T(lang.Detail_col_allowed_ips), MinWidth: 130, Weight: 1.3, Mono: true},
+		{Title: l.T(lang.Detail_col_endpoint), MinWidth: 120, Weight: 1.3, Mono: true},
+		{Title: l.T(lang.Tunnel_col_client_config), MinWidth: 100},
+	}
+	table = wgwidget.NewDataTable(cols, func() int { return len(f.peers) }, func(r, c int) wgwidget.Cell {
+		peer := f.peers[r]
+		pubKeyStr := peer.PublicKey.String()
+		switch c {
+		case plColName:
 			// The parser writes "Unknown" for unnamed peers; the key prefix
 			// identifies them far better than that placeholder does.
 			name := strings.TrimSpace(peer.Name)
 			if name == "" || name == "Unknown" {
 				name = wgstat.ShortKey(pubKeyStr)
 			}
-
+			return wgwidget.Cell{Text: name, Strong: true}
+		case plColAllowed:
 			ips := make([]string, 0, len(peer.AllowedIPs))
 			for _, n := range peer.AllowedIPs {
 				ips = append(ips, n.String())
 			}
-			subtitle := strings.Join(ips, ", ")
-			if subtitle == "" {
-				subtitle = wgstat.ShortKey(pubKeyStr)
+			return wgwidget.Cell{Text: strings.Join(ips, ", ")}
+		case plColEndpoint:
+			if peer.Endpoint == "" {
+				return wgwidget.Cell{Text: wgstat.Dash, Dim: true}
 			}
+			return wgwidget.Cell{Text: peer.Endpoint}
+		}
+		// Provisioning needs the peer's private key: one generated this session
+		// or the one in the client config written when the peer was created.
+		_, generated := f.peerPrivateKeys[pubKeyStr]
+		_, stored := f.storedKeys[pubKeyStr]
+		if generated || stored {
+			return wgwidget.Cell{Text: l.T(lang.Tunnel_client_ready)}
+		}
+		return wgwidget.Cell{Text: wgstat.Dash, Dim: true}
+	})
 
-			// Provisioning needs the peer's private key: either one generated in
-			// this session or the one held by the client config wgAdmin wrote
-			// when the peer was created. Both are already in memory — the list's
-			// update function runs on every scroll and must not touch the disk.
-			_, generated := f.peerPrivateKeys[pubKeyStr]
-			_, stored := f.storedKeys[pubKeyStr]
-			row.Set(name, subtitle, generated || stored)
-
-			row.onQR = func() {
-				cfg, errs := f.validate()
-				if len(errs) > 0 {
-					helpers.ShowError(errs[0], win)
-					return
+	table.Actions = []wgwidget.RowAction{
+		{Icon: wgtheme.IconQR, Tooltip: l.T(lang.Detail_tip_qr), OnTap: func(id int) {
+			cfg, errs := f.validate()
+			if len(errs) > 0 {
+				helpers.ShowError(errs[0], win)
+				return
+			}
+			req := f.qrRequestFor(id)
+			req.serverCfg = cfg
+			ShowPeerQR(win, req, l)
+		}},
+		{Icon: wgtheme.IconEdit, Tooltip: l.T(lang.Common_edit), OnTap: func(id int) {
+			peerCopy := f.peers[id]
+			oldPubKey := peerCopy.PublicKey.String()
+			NewPeerForm(&peerCopy, f.publicEndpointEntry.Text, func(p config.PeerConfig, privateKey string) {
+				delete(f.peerPrivateKeys, oldPubKey)
+				f.peers[id] = p
+				if privateKey != "" {
+					f.peerPrivateKeys[p.PublicKey.String()] = privateKey
 				}
-				req := f.qrRequestFor(id)
-				req.serverCfg = cfg
-				ShowPeerQR(win, req, f.lang)
-			}
+				table.Refresh()
+			}, nil, l).Show(win)
+		}},
+		{Icon: wgtheme.IconTrash, Tooltip: l.T(lang.Common_delete), OnTap: func(id int) {
+			helpers.ShowConfirm(l.T(lang.Tunnel_delete_peer_title), l.T(lang.Tunnel_delete_peer_msg), func(yes bool) {
+				if yes {
+					delete(f.peerPrivateKeys, f.peers[id].PublicKey.String())
+					f.peers = append(f.peers[:id], f.peers[id+1:]...)
+					table.Refresh()
+				}
+			}, win)
+		}},
+	}
 
-			row.onEdit = func() {
-				peerCopy := f.peers[id]
-				oldPubKey := peerCopy.PublicKey.String()
-				peerForm := NewPeerForm(&peerCopy, f.publicEndpointEntry.Text, func(p config.PeerConfig, privateKey string) {
-					delete(f.peerPrivateKeys, oldPubKey)
-					f.peers[id] = p
-					if privateKey != "" {
-						f.peerPrivateKeys[p.PublicKey.String()] = privateKey
-					}
-					f.peersList.Refresh()
-				}, nil, f.lang)
-				peerForm.Show(win)
-			}
-
-			row.onDelete = func() {
-				helpers.ShowConfirm(f.lang.T(lang.Tunnel_delete_peer_title),
-					f.lang.T(lang.Tunnel_delete_peer_msg), func(yes bool) {
-						if yes {
-							delete(f.peerPrivateKeys, f.peers[id].PublicKey.String())
-							f.peers = append(f.peers[:id], f.peers[id+1:]...)
-							f.peersList.Refresh()
-						}
-					}, win)
-			}
-		},
-	)
-
-	addPeerBtn := widget.NewButtonWithIcon(f.lang.T(lang.Tunnel_btn_add_peer), wgtheme.IconAdd, func() {
-		peerForm := NewPeerForm(nil, f.publicEndpointEntry.Text, func(p config.PeerConfig, privateKey string) {
+	addPeerBtn := wgwidget.NewButton(l.T(lang.Tunnel_btn_add_peer), wgtheme.IconAdd, wgwidget.Primary, func() {
+		NewPeerForm(nil, f.publicEndpointEntry.Text, func(p config.PeerConfig, privateKey string) {
 			f.peers = append(f.peers, p)
 			if privateKey != "" {
 				f.peerPrivateKeys[p.PublicKey.String()] = privateKey
 			}
-			f.peersList.Refresh()
-		}, nil, f.lang)
-		peerForm.Show(win)
+			table.Refresh()
+		}, nil, l).Show(win)
 	})
+	addPeerBtn.Scale = wgwidget.ScaleSM
 
-	// The list fills the window rather than being sized to its own contents:
-	// the old fixed GridWrap height meant a tunnel with many peers overflowed
-	// while one with a single peer left most of the window empty.
-	peersSection := container.NewBorder(
-		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM),
-			wgwidget.SectionHeader(f.lang.T(lang.Tunnel_peer_list_label)),
-			formHint(f.lang.T(lang.Tunnel_peers_hint)),
-		),
-		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), addPeerBtn),
-		nil, nil,
-		f.peersList,
-	)
-
-	saveBtn := widget.NewButtonWithIcon(f.lang.T(lang.Common_save), wgtheme.IconImport, func() {
-		cfg, errs := f.validate()
-		if len(errs) > 0 {
-			helpers.ShowError(errs[0], win)
-			return
-		}
-
-		name := f.getTunnelName()
-		if err := f.onSave(name, cfg); err != nil {
-			helpers.ShowError(err, win)
-			return
-		}
-		f.generateClientConfigs(name, cfg, win)
-		win.Close()
-	})
-	saveBtn.Importance = widget.HighImportance
-
-	cancelBtn := widget.NewButton(f.lang.T(lang.Common_cancel), func() {
-		if f.onCancel != nil {
-			f.onCancel()
-		}
-		win.Close()
-	})
-
-	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
-
+	// The table fills the sheet rather than being sized to its own contents, so
+	// a tunnel with many peers scrolls and one with a single peer is not lost
+	// in empty space.
 	content := container.NewBorder(
-		nil,
-		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), buttons),
-		nil, nil,
-		peersSection,
+		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM),
+			wgwidget.SectionTitle(wgtheme.IconPeers, l.T(lang.Detail_section_peers), addPeerBtn),
+			formHint(l.T(lang.Tunnel_peers_hint)),
+		),
+		nil, nil, nil,
+		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceSM, 0, 0, 0), table),
 	)
 
-	win.SetContent(container.New(layout.NewCustomPaddedLayout(
-		wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceXL), content))
-	win.Show()
+	var sheet *wgwidget.Surface
+	cancelBtn := wgwidget.NewButton(l.T(lang.Common_cancel), nil, wgwidget.Secondary, func() { sheet.Close() })
+	saveBtn := wgwidget.NewButton(l.T(lang.Common_save), wgtheme.IconCheck, wgwidget.Primary, func() {
+		if f.save(win) {
+			sheet.Close()
+		}
+	})
+
+	sheet = wgwidget.ShowSheetFill(win, title, wgwidget.SheetFull, content, cancelBtn, saveBtn)
+	f.closeHooks(sheet)
 }
 
 // qrRequestFor describes the client config for the peer at index id. The

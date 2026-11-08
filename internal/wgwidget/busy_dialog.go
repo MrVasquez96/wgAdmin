@@ -4,18 +4,20 @@ import (
 	"sync"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+
+	wgtheme "wgAdmin/internal/ui/theme"
 )
 
-// BusyDialog is the modal shown while a privileged operation runs. It uses the
-// Activity spinner rather than an indeterminate progress bar, which reads as a
-// process running rather than as progress that never advances.
+// BusyDialog is the blocking card shown while a privileged operation runs:
+// a spinner, what is happening and to which tunnel. It cannot be dismissed —
+// the operation is already under way and closing the card would not stop it.
 type BusyDialog struct {
 	mu       sync.Mutex
-	dialog   dialog.Dialog
+	surface  *Surface
 	activity *widget.Activity
 	window   fyne.Window
 }
@@ -25,41 +27,44 @@ func NewBusyDialog(window fyne.Window) *BusyDialog {
 	return &BusyDialog{window: window}
 }
 
-// Show displays the busy dialog with a title and message.
+// Show displays the busy card with a title (the tunnel) and message (the
+// operation).
 func (b *BusyDialog) Show(title, msg string) {
 	fyne.Do(func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 
-		if b.dialog != nil {
-			b.dialog.Hide()
+		if b.surface != nil {
+			b.surface.Close()
 		}
 
+		p := wgtheme.Current()
 		activity := widget.NewActivity()
 		b.activity = activity
 
-		label := Value(msg)
-		label.Alignment = fyne.TextAlignCenter
+		head := newText(msg, wgtheme.TextLG, wgtheme.WeightSemiBold, p.TextPrimary)
+		sub := newText(title, wgtheme.TextSM, wgtheme.WeightMono, p.TextSecondary)
 
-		caption := Caption(title)
-		caption.Alignment = fyne.TextAlignCenter
+		bg := canvas.NewRectangle(p.Surface)
+		bg.CornerRadius = wgtheme.RadiusXL
+		bg.StrokeColor = p.BorderStrong
+		bg.StrokeWidth = 1
 
-		content := container.New(layout.NewCustomPaddedVBoxLayout(10),
-			container.NewCenter(container.New(
-				layout.NewGridWrapLayout(fyne.NewSize(36, 36)), activity)),
-			container.NewCenter(label),
-			container.NewCenter(caption),
-		)
+		row := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceLG+2),
+			container.NewCenter(container.New(layout.NewGridWrapLayout(fyne.NewSize(30, 30)), activity)),
+			container.NewVBox(layout.NewSpacer(), head, sub, layout.NewSpacer()))
+		card := container.NewStack(shadowFor(3, bg.CornerRadius), bg,
+			container.New(layout.NewCustomPaddedLayout(18, 18, 22, 28), row))
 
-		b.dialog = dialog.NewCustomWithoutButtons(title,
-			container.New(layout.NewCustomPaddedLayout(8, 8, 20, 20), content), b.window)
-		b.dialog.Resize(fyne.NewSize(340, 170))
-		b.dialog.Show()
+		o := &overlayRoot{place: placeCenter, width: 300, dim: true}
+		o.panel = guard(card)
+		b.surface = open(b.window, o)
+		b.surface.Intercept = func(func()) {} // Esc and backdrop clicks do nothing
 		activity.Start()
 	})
 }
 
-// Hide dismisses the busy dialog.
+// Hide dismisses the busy card.
 func (b *BusyDialog) Hide() {
 	fyne.Do(func() {
 		b.mu.Lock()
@@ -69,9 +74,9 @@ func (b *BusyDialog) Hide() {
 			b.activity.Stop()
 			b.activity = nil
 		}
-		if b.dialog != nil {
-			b.dialog.Hide()
-			b.dialog = nil
+		if b.surface != nil {
+			b.surface.Close()
+			b.surface = nil
 		}
 	})
 }

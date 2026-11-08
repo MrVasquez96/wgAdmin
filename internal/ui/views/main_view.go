@@ -35,23 +35,32 @@ type MainView struct {
 	settings *settings.AppSettings
 	lang     *lang.Language
 
+	meta          fyne.AppMetadata
 	statusBar     *wgwidget.StatusBar
 	busyDialog    *wgwidget.BusyDialog
 	filterEntry   *widget.Entry
-	autoRefresh   *widget.Check
-	fullscreenBtn *widget.Button
+	liveChip      *wgwidget.ChipButton
+	fullscreenBtn *wgwidget.Button
 
-	sidebar     *widget.List
-	sidebarHead *canvas.Text
-	detailBox   *fyne.Container
-	split       *container.Split
-	brand       *canvas.Text
-	headerBg    *canvas.Rectangle
+	sidebar       *widget.List
+	sidebarFooter *fyne.Container
+	detailBox     *fyne.Container
+	split         *wgwidget.SideSplit
 
-	// interfaces is everything on disk; filtered is what the sidebar shows.
+	// interfaces is everything on disk; filtered is what passes the filter, in
+	// display order; entries is filtered grouped under sidebar headings.
 	interfaces []config.Interface
 	filtered   []config.Interface
+	entries    []sidebarEntry
 	selected   string
+
+	// The detail pane is rebuilt from scratch, so its scroll position and the
+	// inputs it was last built from are kept to carry the one over and to skip
+	// rebuilds when nothing visible changed.
+	detailScroll *container.Scroll
+	detailName   string
+	detailSig    string
+	shortcutsSet bool
 
 	// configs caches parsed configs so the detail pane and sidebar do not
 	// re-read and re-parse every file on each refresh tick.
@@ -79,7 +88,6 @@ func NewMainView(window fyne.Window, ctrl *wg.WG, cfg *settings.AppSettings, lan
 		statusBar:   wgwidget.NewStatusBar(language),
 		busyDialog:  wgwidget.NewBusyDialog(window),
 		filterEntry: widget.NewEntry(),
-		autoRefresh: widget.NewCheck(language.Tf(lang.Main_auto_refresh, cfg.AutoRefreshSecs), nil),
 		configs:     map[string]*config.Config{},
 		tracker:     wgstat.NewTracker(),
 	}
@@ -102,11 +110,12 @@ func (v *MainView) detailActions() detailActions {
 		OnDelete: v.confirmDeleteTunnel,
 		OnCopy: func(label, value string) {
 			v.window.Clipboard().SetContent(value)
-			v.statusBar.Flash(label, true)
+			v.toast(label)
 		},
-		OnPeerQR: v.showPeerQR,
-		OnNew:    v.showAddTunnelForm,
-		OnImport: v.importConfig,
+		OnPeerQR:   v.showPeerQR,
+		OnNew:      v.showAddTunnelForm,
+		OnImport:   v.importConfig,
+		OnRelaunch: v.relaunchAsRoot,
 	}
 }
 
@@ -131,6 +140,7 @@ func (v *MainView) showPeerQR(tunnel, publicKey string) {
 
 // Build assembles the console layout.
 func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
+	v.meta = meta
 	content := container.NewBorder(
 		v.buildToolbar(meta),
 		v.statusBar,
@@ -138,14 +148,19 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 		v.buildBody(),
 	)
 
-	v.registerShortcuts()
+	if !v.shortcutsSet {
+		v.registerShortcuts()
+		v.shortcutsSet = true
+	}
 	v.updateStatusChips()
 
 	// The floating layer is where tooltips and toasts appear.
 	return wgwidget.WithLayer(v.window, content)
 }
 
-// buildToolbar is the top strip: brand, filter, and the global actions.
+// buildToolbar is the top strip: brand, filter, and the global actions. The
+// one primary action (a new tunnel) is a filled button; everything else is an
+// icon button with a tooltip naming it and its shortcut.
 func (v *MainView) buildToolbar(meta fyne.AppMetadata) fyne.CanvasObject {
 	p := wgtheme.Current()
 
@@ -153,71 +168,154 @@ func (v *MainView) buildToolbar(meta fyne.AppMetadata) fyne.CanvasObject {
 	if name == "" {
 		name = v.lang.T(lang.Main_title)
 	}
-	v.brand = canvas.NewText(name, p.Accent)
-	v.brand.TextStyle = fyne.TextStyle{Bold: true}
-	v.brand.TextSize = 18
+	mark := canvas.NewImageFromResource(wgtheme.IconBrand.For(p.Accent))
+	mark.FillMode = canvas.ImageFillContain
+	mark.SetMinSize(fyne.NewSize(24, 24))
 
-	version := canvas.NewText(meta.Version, p.TextDim)
-	version.TextSize = 10
-	version.TextStyle = fyne.TextStyle{Monospace: true}
+	title := wgwidget.Title(name, wgtheme.TextSize(wgtheme.TextLG+1))
+	title.FontSource = wgtheme.Font(wgtheme.WeightSemiBold)
+	version := wgwidget.DimValue(meta.Version)
+	version.TextSize = wgtheme.TextSize(wgtheme.TextXS)
+	version.Color = p.TextDim
 
-	brandBox := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceMD),
-		container.New(layout.NewGridWrapLayout(fyne.NewSize(18, 18)),
-			widget.NewIcon(wgtheme.IconShield)),
-		v.brand,
-		container.NewVBox(layout.NewSpacer(), version, layout.NewSpacer()),
-	)
+	brandBox := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceMD+1),
+		container.NewCenter(mark), container.NewCenter(title), container.NewCenter(version))
 
 	v.filterEntry.SetPlaceHolder(v.lang.T(lang.Main_filter_placeholder))
 	v.filterEntry.OnChanged = func(string) { v.applyFilter() }
-	v.filterEntry.ActionItem = widget.NewIcon(wgtheme.IconFilter)
+	v.filterEntry.ActionItem = widget.NewIcon(wgtheme.IconSearch)
 	filterBox := container.New(
-		layout.NewGridWrapLayout(fyne.NewSize(210, v.filterEntry.MinSize().Height)),
+		layout.NewGridWrapLayout(fyne.NewSize(260, v.filterEntry.MinSize().Height)),
 		v.filterEntry)
 
-	newBtn := widget.NewButtonWithIcon(v.lang.T(lang.Main_new_tunnel), wgtheme.IconAdd, v.showAddTunnelForm)
-	newBtn.Importance = widget.HighImportance
+	newBtn := wgwidget.NewButton(v.lang.T(lang.Main_add_tunnel), wgtheme.IconAdd, wgwidget.Primary, v.showAddTunnelForm)
+	newBtn.Tooltip = "Ctrl+N"
+	importBtn := wgwidget.NewIconButton(wgtheme.IconImport, v.lang.T(lang.Main_tip_import), v.importConfig)
+	backupsBtn := wgwidget.NewIconButton(wgtheme.IconArchive, v.lang.T(lang.Main_tip_backups), v.showBackupsDialog)
+	refreshBtn := wgwidget.NewIconButton(wgtheme.IconRefresh, v.lang.T(lang.Main_tip_refresh), v.Refresh)
+	paletteBtn := wgwidget.NewIconButton(wgtheme.IconCommand, v.lang.T(lang.Main_tip_palette), v.showCommandPalette)
+	settingsBtn := wgwidget.NewIconButton(wgtheme.IconSettings, v.lang.T(lang.Main_tip_settings), v.showSettings)
 
-	importBtn := widget.NewButtonWithIcon(v.lang.T(lang.Main_import), wgtheme.IconImport, v.importConfig)
-	backupsBtn := widget.NewButtonWithIcon(v.lang.T(lang.Main_backups), wgtheme.IconFolder, v.showBackupsDialog)
-	refreshBtn := widget.NewButtonWithIcon("", wgtheme.IconRefresh, v.Refresh)
-	settingsBtn := widget.NewButtonWithIcon("", wgtheme.IconSettings, v.showSettings)
-
-	v.fullscreenBtn = widget.NewButtonWithIcon("", wgtheme.IconFullscreen, v.toggleFullscreen)
+	v.fullscreenBtn = wgwidget.NewIconButton(wgtheme.IconFullscreen, "", v.toggleFullscreen)
 	v.syncFullscreenButton()
 
-	v.autoRefresh.OnChanged = func(on bool) {
-		if on {
-			v.startAutoRefresh()
-		} else {
-			v.stopAutoRefresh()
-		}
-	}
+	v.liveChip = wgwidget.NewChipButton(nil, "", p.TextDim, v.showRefreshPopover)
+	v.liveChip.Tooltip = v.lang.T(lang.Main_tip_live)
+	v.syncLiveChip()
 	if v.settings.AutoRefreshEnabled {
-		v.autoRefresh.SetChecked(true)
+		v.startAutoRefresh()
+	}
+
+	sep := func() fyne.CanvasObject {
+		return container.New(layout.NewCustomPaddedLayout(8, 8, 4, 4), wgwidget.VHairline())
 	}
 
 	right := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM),
 		filterBox,
-		wgwidget.VHairline(),
+		sep(),
 		newBtn, importBtn, backupsBtn,
-		wgwidget.VHairline(),
-		container.NewCenter(v.autoRefresh),
-		refreshBtn, v.fullscreenBtn, settingsBtn,
+		sep(),
+		container.NewCenter(v.liveChip),
+		refreshBtn, paletteBtn, v.fullscreenBtn, settingsBtn,
 	)
 
 	bar := container.NewBorder(nil, nil, brandBox, right)
 
-	v.headerBg = canvas.NewRectangle(p.Header)
-	rule := canvas.NewRectangle(p.Border)
-	rule.SetMinSize(fyne.NewSize(0, 1))
-
 	return container.NewVBox(
-		container.NewStack(v.headerBg,
+		container.NewStack(canvas.NewRectangle(p.Header),
 			container.New(layout.NewCustomPaddedLayout(
-				wgtheme.SpaceMD, wgtheme.SpaceMD, wgtheme.SpaceLG, wgtheme.SpaceLG), bar)),
-		rule,
+				wgtheme.SpaceMD+2, wgtheme.SpaceMD+2, wgtheme.SpaceXL, wgtheme.SpaceLG), bar)),
+		wgwidget.Hairline(),
 	)
+}
+
+// syncLiveChip shows whether auto refresh is running and at what interval.
+func (v *MainView) syncLiveChip() {
+	if v.liveChip == nil {
+		return
+	}
+	p := wgtheme.Current()
+	if v.settings.AutoRefreshEnabled {
+		v.liveChip.Set(wgwidget.NewPulseDot(p.Success, true),
+			v.lang.Tf(lang.Main_live, v.settings.AutoRefreshSecs), p.Success)
+		return
+	}
+	v.liveChip.Set(wgwidget.NewPulseDot(p.TextDim, false), v.lang.T(lang.Main_paused), p.TextSecondary)
+}
+
+// refreshIntervals are the choices offered by the live chip, in seconds;
+// zero means off.
+var refreshIntervals = []int{0, 2, 5, 10, 30}
+
+// showRefreshPopover lets the auto refresh interval be changed in place,
+// without a trip to Settings.
+func (v *MainView) showRefreshPopover() {
+	p := wgtheme.Current()
+	labels := make([]string, len(refreshIntervals))
+	selected := 0
+	for i, secs := range refreshIntervals {
+		if secs == 0 {
+			labels[i] = v.lang.T(lang.Main_refresh_off)
+		} else {
+			labels[i] = fmt.Sprintf("%ds", secs)
+		}
+		if v.settings.AutoRefreshEnabled && secs == v.settings.AutoRefreshSecs {
+			selected = i
+		}
+	}
+
+	var pop *wgwidget.Surface
+	seg := wgwidget.NewSegmented(labels, func(i int) {
+		secs := refreshIntervals[i]
+		v.settings.AutoRefreshEnabled = secs > 0
+		if secs > 0 {
+			v.settings.AutoRefreshSecs = secs
+		}
+		v.settings.Save(fyne.CurrentApp().Preferences())
+		v.stopAutoRefresh()
+		if secs > 0 {
+			v.startAutoRefresh()
+		}
+		v.syncLiveChip()
+		pop.Close()
+	})
+	seg.SetSelected(selected)
+
+	head := wgwidget.Title(v.lang.T(lang.Main_refresh_title), wgtheme.TextSize(wgtheme.TextSM))
+	head.FontSource = wgtheme.Font(wgtheme.WeightSemiBold)
+	head.Color = p.TextSecondary
+	pop = wgwidget.ShowPopover(v.liveChip, container.New(layout.NewCustomPaddedLayout(6, 6, 8, 8),
+		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD), head, seg)), 0)
+}
+
+// sidebarEntry is one sidebar item: a group heading or a tunnel.
+type sidebarEntry struct {
+	header string
+	count  int
+	iface  config.Interface
+}
+
+const (
+	sidebarHeaderH = 30
+	sidebarRowH    = 50
+)
+
+// sidebarCell renders either kind of sidebar entry, so widget.List can reuse
+// one template for both.
+type sidebarCell struct {
+	widget.BaseWidget
+	row  *wgwidget.TunnelRow
+	head *fyne.Container
+}
+
+func newSidebarCell() *sidebarCell {
+	c := &sidebarCell{row: wgwidget.NewTunnelRow(), head: container.NewStack()}
+	c.ExtendBaseWidget(c)
+	return c
+}
+
+func (c *sidebarCell) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(container.NewStack(c.row, c.head))
 }
 
 // buildBody is the sidebar/detail split.
@@ -225,57 +323,84 @@ func (v *MainView) buildBody() fyne.CanvasObject {
 	p := wgtheme.Current()
 
 	v.sidebar = widget.NewList(
-		func() int { return len(v.filtered) },
-		func() fyne.CanvasObject { return wgwidget.NewTunnelRow() },
+		func() int { return len(v.entries) },
+		func() fyne.CanvasObject { return newSidebarCell() },
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			row, ok := obj.(*wgwidget.TunnelRow)
-			if !ok || id >= len(v.filtered) {
+			cell, ok := obj.(*sidebarCell)
+			if !ok || id >= len(v.entries) {
 				return
 			}
-			iface := v.filtered[id]
+			e := v.entries[id]
+			if e.header != "" {
+				cell.row.Hide()
+				cell.head.Objects = []fyne.CanvasObject{wgwidget.SidebarHeader(e.header, e.count)}
+				cell.head.Show()
+				cell.head.Refresh()
+				return
+			}
+			cell.head.Hide()
+			cell.row.Show()
+			iface := e.iface
 			dev, _ := v.snapshot.Device(iface.Name)
 			live := v.snapshot.Available && iface.Active
-
-			row.Set(iface.Name, iface.IP,
+			cell.row.OnTap = func() { v.selectTunnel(iface.Name) }
+			cell.row.Set(iface.Name, iface.IP,
 				summaryLine(iface, v.configs[iface.Name], dev, live),
 				iface.Active, iface.Name == v.selected)
 		},
 	)
-	v.sidebar.OnSelected = func(id widget.ListItemID) {
-		if id < len(v.filtered) {
-			v.selectTunnel(v.filtered[id].Name)
-		}
-	}
+	v.sidebar.HideSeparators = true
 
-	v.sidebarHead = wgwidget.Caption(v.lang.T(lang.Main_sidebar_heading))
-
-	sidebarBg := canvas.NewRectangle(p.SurfaceRaised)
-	sidebarPane := container.NewStack(sidebarBg,
-		container.NewBorder(
-			container.New(layout.NewCustomPaddedLayout(
-				wgtheme.SpaceMD, wgtheme.SpaceSM, wgtheme.SpaceLG, wgtheme.SpaceMD), v.sidebarHead),
-			nil, nil, nil,
-			v.sidebar,
+	v.sidebarFooter = container.NewStack()
+	// The sidebar shares the window background and is set apart by a hairline.
+	// On a tone of its own, the split divider's gap showed as a dark band.
+	sidebarPane := container.NewStack(canvas.NewRectangle(p.Background),
+		container.NewBorder(nil,
+			container.NewVBox(wgwidget.Hairline(), v.sidebarFooter),
+			nil, nil,
+			container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceSM, 0, 0, 0), v.sidebar),
 		),
 	)
 
 	v.detailBox = container.NewStack()
 
-	v.split = container.NewHSplit(sidebarPane, v.detailBox)
-	v.split.SetOffset(0.24)
+	v.split = wgwidget.NewSideSplit(sidebarPane, v.detailBox, 270)
 	return v.split
+}
+
+// updateSidebarFooter shows the tunnel count and how many are up.
+func (v *MainView) updateSidebarFooter() {
+	if v.sidebarFooter == nil {
+		return
+	}
+	up := 0
+	for _, i := range v.interfaces {
+		if i.Active {
+			up++
+		}
+	}
+	p := wgtheme.Current()
+	text := wgwidget.DimValue(v.lang.Tf(lang.Main_tunnel_count, len(v.interfaces), up))
+	text.TextStyle = fyne.TextStyle{}
+	text.FontSource = wgtheme.Font(wgtheme.WeightMedium)
+	text.TextSize = wgtheme.TextSize(wgtheme.TextSM)
+	text.Color = p.TextDim
+	v.sidebarFooter.Objects = []fyne.CanvasObject{
+		container.New(layout.NewCustomPaddedLayout(10, 10, 18, 14), text),
+	}
+	v.sidebarFooter.Refresh()
 }
 
 // Refresh reloads interfaces and live state.
 func (v *MainView) Refresh() {
 	go func() {
-		interfaces, err := v.ctrl.ListInterfaces()
+		interfaces, err := ListInterfaces(v.ctrl)
 
 		names := make([]string, 0, len(interfaces))
 		for _, i := range interfaces {
 			names = append(names, i.Name)
 		}
-		snap := wgstat.Read(names...)
+		snap := ReadSnapshot(names...)
 		v.tracker.Observe(snap)
 
 		// Parse each config once per refresh, off the UI thread.
@@ -325,9 +450,47 @@ func (v *MainView) applyFilter() {
 		v.selected = v.filtered[0].Name
 	}
 
+	v.buildEntries()
 	v.sidebar.Refresh()
 	v.syncSidebarSelection()
+	v.updateSidebarFooter()
 	v.renderDetail()
+}
+
+// buildEntries groups the filtered tunnels under Active and Inactive headings,
+// and orders filtered the same way so arrow-key navigation follows what is on
+// screen.
+func (v *MainView) buildEntries() {
+	var up, down []config.Interface
+	for _, i := range v.filtered {
+		if i.Active {
+			up = append(up, i)
+		} else {
+			down = append(down, i)
+		}
+	}
+	v.filtered = append(append(v.filtered[:0:0], up...), down...)
+
+	v.entries = v.entries[:0]
+	add := func(title string, group []config.Interface) {
+		if len(group) == 0 {
+			return
+		}
+		v.entries = append(v.entries, sidebarEntry{header: title, count: len(group)})
+		for _, i := range group {
+			v.entries = append(v.entries, sidebarEntry{iface: i})
+		}
+	}
+	add(v.lang.T(lang.Main_section_active), up)
+	add(v.lang.T(lang.Main_section_inactive), down)
+
+	for i, e := range v.entries {
+		if e.header != "" {
+			v.sidebar.SetItemHeight(i, sidebarHeaderH)
+		} else {
+			v.sidebar.SetItemHeight(i, sidebarRowH)
+		}
+	}
 }
 
 func (v *MainView) isVisible(name string) bool {
@@ -339,16 +502,15 @@ func (v *MainView) isVisible(name string) bool {
 	return false
 }
 
-// syncSidebarSelection mirrors v.selected onto the list widget without
-// re-triggering OnSelected.
+// syncSidebarSelection keeps the selected tunnel scrolled into view. Rows
+// draw their own selected state, so the list's selection is never used.
 func (v *MainView) syncSidebarSelection() {
-	for i, iface := range v.filtered {
-		if iface.Name == v.selected {
-			v.sidebar.Select(i)
+	for i, e := range v.entries {
+		if e.header == "" && e.iface.Name == v.selected {
+			v.sidebar.ScrollTo(i)
 			return
 		}
 	}
-	v.sidebar.UnselectAll()
 }
 
 // selectTunnel switches the detail pane to a tunnel.
@@ -362,35 +524,77 @@ func (v *MainView) selectTunnel(name string) {
 }
 
 // renderDetail repaints the right-hand pane for the current selection.
+//
+// The pane is rebuilt from scratch, which used to reset its scroll position on
+// every refresh tick and would drop hover states on its widgets. So a rebuild
+// is skipped when nothing it shows has changed, and when it does happen for
+// the same tunnel the scroll offset is carried over.
 func (v *MainView) renderDetail() {
 	var content fyne.CanvasObject
+	var scroll *container.Scroll
+	sig := ""
 
 	switch {
 	case len(v.interfaces) == 0:
 		content = v.detail.emptyState(lang.Main_no_tunnels_title, lang.Main_no_tunnels_body, true)
+		sig = "empty"
 	case len(v.filtered) == 0:
 		content = v.detail.emptyState(lang.Main_no_match_title, lang.Main_no_match_body, false)
+		sig = "nomatch"
 	case v.selected == "":
 		content = v.detail.emptyState(lang.Main_empty_title, lang.Main_empty_body, false)
+		sig = "none"
 	default:
 		iface, ok := v.findInterface(v.selected)
 		if !ok {
 			content = v.detail.emptyState(lang.Main_empty_title, lang.Main_empty_body, false)
+			sig = "none"
 			break
 		}
+		cfg := v.configs[iface.Name]
 		rate, _ := v.tracker.Rate(iface.Name)
-		content = v.detail.build(
-			*iface,
-			v.configs[iface.Name],
-			v.snapshot,
-			rate,
-			v.tracker.History(iface.Name),
-			v.ctrl.GetConfigPath(iface.Name),
-		)
+		history := v.tracker.History(iface.Name)
+		dev, hasDev := v.snapshot.Device(iface.Name)
+		live := v.snapshot.Available && hasDev && iface.Active
+
+		cfgText := ""
+		if cfg != nil {
+			cfgText = config.GenerateConfigString(cfg)
+		}
+		sig = fmt.Sprintf("%s|%v|%s|%s|%v|%s", iface.Name, iface.Active, iface.IP, iface.PublicKey,
+			v.snapshot.Available, cfgText) + fmt.Sprintf("|%v", v.snapshot.Taken.IsZero())
+		if live {
+			// Live data changes every tick (counters, handshake ages), so a
+			// live tunnel always redraws.
+			sig += fmt.Sprintf("|%v|%v|%d|%d", time.Now().UnixNano(), dev, len(history), int(rate.RX+rate.TX))
+		}
+		if sig == v.detailSig && v.detailName == iface.Name {
+			return
+		}
+
+		scroll = v.detail.build(*iface, cfg, v.snapshot, rate, history, v.ctrl.GetConfigPath(iface.Name))
+		content = scroll
+	}
+
+	if sig == v.detailSig && sig != "" && scroll == nil {
+		return
+	}
+
+	var offset fyne.Position
+	if scroll != nil && v.detailScroll != nil && v.detailName == v.selected {
+		offset = v.detailScroll.Offset
 	}
 
 	v.detailBox.Objects = []fyne.CanvasObject{content}
 	v.detailBox.Refresh()
+
+	v.detailSig = sig
+	v.detailScroll = scroll
+	v.detailName = v.selected
+	if scroll != nil && offset.Y > 0 {
+		scroll.Offset = offset
+		scroll.Refresh()
+	}
 }
 
 // updateStatusChips refreshes the environment chips on the status strip.
@@ -398,17 +602,35 @@ func (v *MainView) updateStatusChips() {
 	p := wgtheme.Current()
 
 	chips := []fyne.CanvasObject{
-		wgwidget.NeutralChip(v.settings.WGConfigPath),
-		wgwidget.NeutralChip(v.lang.T(lang.Main_chip_backend)),
+		wgwidget.Tag(v.settings.WGConfigPath, p.TextSecondary, wgtheme.IconFolder),
+		wgwidget.Tag(v.lang.T(lang.Main_chip_backend), p.TextSecondary, nil),
 	}
-
-	if os.Geteuid() == 0 {
-		chips = append(chips, wgwidget.Chip(v.lang.T(lang.Main_chip_root), p.Success, true))
+	if IsRoot() {
+		chips = append(chips, wgwidget.Tag(v.lang.T(lang.Main_chip_root), p.Success, wgtheme.IconLock))
 	} else {
-		chips = append(chips, wgwidget.Chip(v.lang.T(lang.Main_chip_no_root), p.Warning, true))
+		chips = append(chips, wgwidget.Tag(v.lang.T(lang.Main_chip_no_root), p.Warning, wgtheme.IconAlert))
 	}
-
 	v.statusBar.SetChips(chips...)
+}
+
+// toast confirms a completed action without taking up the status strip,
+// which is kept for state that stays true (errors, warnings).
+func (v *MainView) toast(msg string) {
+	wgwidget.ShowToast(v.window, wgwidget.ToastSuccess, msg)
+}
+
+// relaunchAsRoot restarts the app with root privileges so live telemetry can
+// be read, preferring pkexec's graphical prompt over the in-app sudo dialog.
+func (v *MainView) relaunchAsRoot() {
+	if settings.PkexecAvailable() {
+		if err := settings.RelaunchWithPkexec(); err != nil {
+			helpers.ShowError(err, v.window)
+			return
+		}
+		fyne.CurrentApp().Quit()
+		return
+	}
+	settings.ShowSudoRelaunchDialog(v.window)
 }
 
 // importConfig opens a .conf and copies it into the config directory.
@@ -460,7 +682,7 @@ func (v *MainView) save(name string, cfg *config.Config) {
 		helpers.ShowError(errors.New(v.lang.Tf(lang.Main_error_saving, err.Error())), v.window)
 		return
 	}
-	v.statusBar.Flash(v.lang.Tf(lang.Main_import_success_msg, name), true)
+	v.toast(v.lang.Tf(lang.Main_import_success_msg, name))
 	v.Refresh()
 }
 
@@ -493,7 +715,8 @@ func (v *MainView) toggleInterface(name string, activate bool) {
 				if activate {
 					statusKey = lang.Main_activated_status
 				}
-				v.statusBar.Flash(v.lang.Tf(statusKey, name), true)
+				v.statusBar.Reset()
+				v.toast(v.lang.Tf(statusKey, name))
 			}
 
 			v.Refresh()
@@ -506,7 +729,7 @@ func (v *MainView) showScan(name, ip string) {
 	if cfg, err := wgcfg.Load(v.ctrl.GetConfigPath(name)); err == nil {
 		plan = PlanScan(cfg, ip)
 	}
-	NewScanView(name, ip, plan, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs, v.lang).Show()
+	NewScanView(name, ip, plan, v.settings.ScanWorkers, v.settings.ScanTimeoutSecs, v.lang).Show(v.window)
 }
 
 func (v *MainView) showAddTunnelForm() {
@@ -605,7 +828,7 @@ func (v *MainView) confirmDeleteTunnel(name string) {
 				if err != nil {
 					v.statusBar.SetStatus(fmt.Sprintf("%v", err), false)
 				} else {
-					v.statusBar.Flash(v.lang.Tf(lang.Main_deleted_status, name), true)
+					v.toast(v.lang.Tf(lang.Main_deleted_status, name))
 					if v.selected == name {
 						v.selected = ""
 					}
@@ -699,25 +922,13 @@ func (v *MainView) applySettings(updated *settings.AppSettings) {
 		v.ctrl = &newCtrl
 	}
 
-	// Rebuild the theme before repainting so new colours are picked up by every
-	// widget that reads the palette at construction time.
+	// A theme change touches every widget, so rebuild the whole window rather
+	// than patching colours in place.
 	fyne.CurrentApp().Settings().SetTheme(wgtheme.NewWGAdminTheme(v.settings))
-	p := wgtheme.Current()
-
-	v.autoRefresh.Text = v.lang.Tf(lang.Main_auto_refresh, updated.AutoRefreshSecs)
-	v.autoRefresh.Refresh()
-
-	v.brand.Color = p.Accent
-	v.brand.Refresh()
-	v.headerBg.FillColor = p.Header
-	v.headerBg.Refresh()
 
 	v.stopAutoRefresh()
-	if v.autoRefresh.Checked {
-		v.startAutoRefresh()
-	}
-
-	v.updateStatusChips()
+	v.detailSig = ""
+	v.window.SetContent(v.Build(v.meta))
 	v.Refresh()
 }
 
@@ -753,11 +964,13 @@ func (v *MainView) syncFullscreenButton() {
 		return
 	}
 	if v.window.FullScreen() {
-		v.fullscreenBtn.SetIcon(wgtheme.IconFullscreenExit)
-		v.fullscreenBtn.Importance = widget.HighImportance
+		v.fullscreenBtn.Icon = wgtheme.IconFullscreenExit
+		v.fullscreenBtn.Tooltip = v.lang.T(lang.Main_exit_fullscreen) + " (F11)"
+		v.fullscreenBtn.Variant = wgwidget.Secondary
 	} else {
-		v.fullscreenBtn.SetIcon(wgtheme.IconFullscreen)
-		v.fullscreenBtn.Importance = widget.MediumImportance
+		v.fullscreenBtn.Icon = wgtheme.IconFullscreen
+		v.fullscreenBtn.Tooltip = v.lang.T(lang.Main_enter_fullscreen) + " (F11)"
+		v.fullscreenBtn.Variant = wgwidget.Ghost
 	}
 	v.fullscreenBtn.Refresh()
 }
@@ -799,7 +1012,7 @@ func (v *MainView) toggleSelected() {
 
 // scanSelected opens the scanner for the selected tunnel.
 func (v *MainView) scanSelected() {
-	if iface, ok := v.findInterface(v.selected); ok && iface.IP != "unknown" {
+	if iface, ok := v.findInterface(v.selected); ok && canScan(*iface) {
 		v.showScan(iface.Name, iface.IP)
 	}
 }
@@ -824,6 +1037,56 @@ func (v *MainView) moveSelection(delta int) {
 		idx = len(v.filtered) - 1
 	}
 	v.selectTunnel(v.filtered[idx].Name)
-	v.sidebar.ScrollTo(idx)
 	v.syncSidebarSelection()
+}
+
+// Select shows the named tunnel once the next refresh has loaded it. Used by
+// tooling that drives the console (cmd/preview); the UI selects through the
+// sidebar.
+func (v *MainView) Select(name string) {
+	v.selected = name
+	v.renderDetail()
+}
+
+// ScrollDetail scrolls the detail pane, for tooling (cmd/preview). The offset
+// is then carried across refreshes like a user's own scrolling.
+func (v *MainView) ScrollDetail(y float32) {
+	if v.detailScroll != nil {
+		v.detailScroll.Offset = fyne.NewPos(0, y)
+		v.detailScroll.Refresh()
+	}
+}
+
+// Open shows one of the console's sub-screens for the selected tunnel, for
+// tooling (cmd/preview) that needs to screenshot them without clicking.
+func (v *MainView) Open(what string) {
+	name := v.selected
+	switch what {
+	case "new":
+		v.showAddTunnelForm()
+	case "edit":
+		v.showEditTunnelForm(name)
+	case "peers":
+		v.showEditPeersTunnelForm(name)
+	case "config":
+		v.showConfigView(name)
+	case "backups":
+		v.showBackupsDialog()
+	case "settings":
+		v.showSettings()
+	case "scan":
+		v.scanSelected()
+	case "palette":
+		v.showCommandPalette()
+	case "shortcuts":
+		v.showShortcuts()
+	case "delete":
+		v.confirmDeleteTunnel(name)
+	case "busy":
+		v.busyDialog.Show(name, v.lang.T(lang.Status_activating))
+	case "qr":
+		if cfg := v.configs[name]; cfg != nil && len(cfg.Peers) > 0 {
+			v.showPeerQR(name, cfg.Peers[0].PublicKey.String())
+		}
+	}
 }

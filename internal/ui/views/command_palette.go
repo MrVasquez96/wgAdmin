@@ -1,13 +1,13 @@
 package ui
 
 import (
+	"image/color"
 	"sort"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -21,61 +21,101 @@ type command struct {
 	title    string
 	group    string
 	shortcut string
-	icon     fyne.Resource
+	icon     *wgtheme.Icon
 	run      func()
 }
 
-// paletteRow is a reusable list row: icon, title, group and shortcut hint.
-// It is a widget rather than an ad-hoc container so the update function can
-// address its parts by name instead of by index.
+// paletteRow is a reusable list row: icon, title, group and shortcut keycap,
+// with its own highlight for the keyboard-selected entry.
 type paletteRow struct {
 	widget.BaseWidget
 
-	icon      *widget.Icon
-	title     *widget.Label
-	group     *canvas.Text
-	shortcut  *canvas.Text
-	container *fyne.Container
+	bg       *canvas.Rectangle
+	icon     *canvas.Image
+	title    *canvas.Text
+	group    *canvas.Text
+	shortcut *fyne.Container
+	box      *fyne.Container
 }
 
 func newPaletteRow() *paletteRow {
+	p := wgtheme.Current()
 	r := &paletteRow{
-		icon:     widget.NewIcon(wgtheme.IconChevronR),
-		title:    widget.NewLabel(""),
-		group:    wgwidget.Caption(""),
-		shortcut: wgwidget.Caption(""),
+		bg:       canvas.NewRectangle(color.Transparent),
+		icon:     &canvas.Image{FillMode: canvas.ImageFillContain},
+		title:    canvas.NewText("", p.TextPrimary),
+		group:    canvas.NewText("", p.TextDim),
+		shortcut: container.NewStack(),
 	}
-	r.title.Truncation = fyne.TextTruncateEllipsis
+	r.bg.CornerRadius = wgtheme.RadiusMD
+	r.icon.SetMinSize(fyne.NewSize(18, 18))
+	r.title.TextSize = wgtheme.TextSize(wgtheme.TextMD)
+	r.title.FontSource = wgtheme.Font(wgtheme.WeightMedium)
+	r.group.TextSize = wgtheme.TextSize(wgtheme.TextXS)
+	r.group.FontSource = wgtheme.Font(wgtheme.WeightSemiBold)
 
 	right := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceMD),
-		container.NewCenter(r.group),
-		container.NewCenter(r.shortcut),
-	)
-
-	// The right padding keeps the shortcut column clear of the list scrollbar,
-	// which otherwise sits on top of it.
-	r.container = container.New(layout.NewCustomPaddedLayout(0, 0, 0, wgtheme.SpaceLG),
+		container.NewCenter(r.group), container.NewCenter(r.shortcut))
+	// The right padding keeps the shortcut clear of the list scrollbar.
+	r.box = container.NewStack(r.bg, container.New(layout.NewCustomPaddedLayout(7, 7, 10, 18),
 		container.NewBorder(nil, nil,
-			container.NewCenter(container.New(layout.NewGridWrapLayout(fyne.NewSize(16, 16)), r.icon)),
-			right,
-			r.title,
-		))
+			container.New(layout.NewCustomPaddedLayout(0, 0, 0, 10), container.NewCenter(r.icon)),
+			right, container.NewVBox(layout.NewSpacer(), r.title, layout.NewSpacer()))))
 
 	r.ExtendBaseWidget(r)
 	return r
 }
 
-func (r *paletteRow) Set(c command) {
-	r.icon.SetResource(c.icon)
-	r.title.SetText(c.title)
-	r.group.Text = strings.ToUpper(c.group)
-	r.shortcut.Text = c.shortcut
+func (r *paletteRow) Set(c command, selected bool) {
+	p := wgtheme.Current()
+	tone := p.TextSecondary
+	r.bg.FillColor = color.Transparent
+	if selected {
+		tone = p.Accent
+		r.bg.FillColor = p.AccentTint()
+	}
+	if c.icon != nil {
+		r.icon.Resource = c.icon.For(tone)
+	}
+	r.title.Text = c.title
+	r.group.Text = c.group
+	r.shortcut.Objects = nil
+	if c.shortcut != "" {
+		r.shortcut.Objects = []fyne.CanvasObject{wgwidget.Kbd(c.shortcut)}
+	}
+	r.bg.Refresh()
+	r.icon.Refresh()
+	r.title.Refresh()
 	r.group.Refresh()
 	r.shortcut.Refresh()
 }
 
 func (r *paletteRow) CreateRenderer() fyne.WidgetRenderer {
-	return widget.NewSimpleRenderer(r.container)
+	return widget.NewSimpleRenderer(r.box)
+}
+
+// paletteEntry is the search field; it hands Up/Down to the result list so
+// the palette works without leaving the keyboard.
+type paletteEntry struct {
+	widget.Entry
+	onMove func(delta int)
+}
+
+func newPaletteEntry(onMove func(int)) *paletteEntry {
+	e := &paletteEntry{onMove: onMove}
+	e.ExtendBaseWidget(e)
+	return e
+}
+
+func (e *paletteEntry) TypedKey(ev *fyne.KeyEvent) {
+	switch ev.Name {
+	case fyne.KeyDown:
+		e.onMove(1)
+	case fyne.KeyUp:
+		e.onMove(-1)
+	default:
+		e.Entry.TypedKey(ev)
+	}
 }
 
 // commands builds the palette's contents: the global actions first, then one
@@ -88,7 +128,7 @@ func (v *MainView) commands() []command {
 		{l.T(lang.Main_add_tunnel), actions, "Ctrl+N", wgtheme.IconAdd, v.showAddTunnelForm},
 		{l.T(lang.Main_import), actions, "Ctrl+I", wgtheme.IconImport, v.importConfig},
 		{l.T(lang.Common_refresh), actions, "Ctrl+R", wgtheme.IconRefresh, v.Refresh},
-		{l.T(lang.Main_backups), actions, "Ctrl+B", wgtheme.IconFolder, v.showBackupsDialog},
+		{l.T(lang.Main_backups), actions, "Ctrl+B", wgtheme.IconArchive, v.showBackupsDialog},
 		{l.T(lang.Common_settings), actions, "Ctrl+,", wgtheme.IconSettings, v.showSettings},
 		{v.fullscreenCommandTitle(), actions, "F11", wgtheme.IconFullscreen, v.toggleFullscreen},
 		{l.T(lang.Shortcuts_title), actions, "", wgtheme.IconKeyboard, v.showShortcuts},
@@ -102,9 +142,12 @@ func (v *MainView) commands() []command {
 			if iface.Active {
 				toggleTitle, icon = l.T(lang.Card_btn_deactivate), wgtheme.IconStop
 			}
+			cmds = append(cmds, command{toggleTitle + " · " + name, actions, "Space", icon, v.toggleSelected})
+			// Scanning needs the tunnel up, so it is offered only then.
+			if canScan(*iface) {
+				cmds = append(cmds, command{l.T(lang.Card_btn_scan) + " · " + name, actions, "Ctrl+S", wgtheme.IconScan, v.scanSelected})
+			}
 			cmds = append(cmds,
-				command{toggleTitle + " · " + name, actions, "Space", icon, v.toggleSelected},
-				command{l.T(lang.Card_btn_scan) + " · " + name, actions, "Ctrl+S", wgtheme.IconScan, v.scanSelected},
 				command{l.T(lang.Card_btn_edit) + " · " + name, actions, "Ctrl+E", wgtheme.IconEdit,
 					func() { v.showEditTunnelForm(name) }},
 				command{l.T(lang.Card_btn_peers) + " · " + name, actions, "Ctrl+P", wgtheme.IconPeers,
@@ -118,10 +161,14 @@ func (v *MainView) commands() []command {
 	tunnels := l.T(lang.Palette_group_tunnels)
 	for _, name := range v.tunnelNames() {
 		n := name
+		icon := wgtheme.IconTunnelDown
+		if iface, ok := v.findInterface(n); ok && iface.Active {
+			icon = wgtheme.IconTunnelUp
+		}
 		cmds = append(cmds, command{
 			title: l.Tf(lang.Palette_select_tunnel, n),
 			group: tunnels,
-			icon:  wgtheme.IconGlobe,
+			icon:  icon,
 			run: func() {
 				v.selectTunnel(n)
 				v.syncSidebarSelection()
@@ -201,20 +248,28 @@ func (v *MainView) showCommandPalette() {
 	shown := all
 	selected := 0
 
-	var d dialog.Dialog
+	var s *wgwidget.Surface
 	var list *widget.List
-
-	entry := widget.NewEntry()
-	entry.SetPlaceHolder(v.lang.T(lang.Palette_placeholder))
 
 	run := func(i int) {
 		if i < 0 || i >= len(shown) {
 			return
 		}
 		cmd := shown[i]
-		d.Hide()
+		s.Close()
 		cmd.run()
 	}
+
+	entry := newPaletteEntry(func(delta int) {
+		if len(shown) == 0 {
+			return
+		}
+		selected = (selected + delta + len(shown)) % len(shown)
+		list.Refresh()
+		list.ScrollTo(selected)
+	})
+	entry.SetPlaceHolder(v.lang.T(lang.Palette_placeholder))
+	entry.ActionItem = widget.NewIcon(wgtheme.IconSearch)
 
 	list = widget.NewList(
 		func() int { return len(shown) },
@@ -224,18 +279,18 @@ func (v *MainView) showCommandPalette() {
 			if !ok || id >= len(shown) {
 				return
 			}
-			row.Set(shown[id])
+			row.Set(shown[id], id == selected)
 		},
 	)
+	list.HideSeparators = true
 	list.OnSelected = func(id widget.ListItemID) {
-		selected = id
+		list.UnselectAll()
 		run(id)
 	}
 
-	// Enter runs the top match, which is the whole point of type-then-Enter.
+	// Enter runs the highlighted match, which is the whole point of
+	// type-then-Enter.
 	entry.OnSubmitted = func(string) { run(selected) }
-
-	hint := wgwidget.Caption(v.lang.T(lang.Palette_hint))
 
 	// An empty list would otherwise render as blank space, leaving the user
 	// unsure whether the palette is broken or simply has no match.
@@ -244,9 +299,10 @@ func (v *MainView) showCommandPalette() {
 	noResults.Importance = widget.LowImportance
 	noResults.Hide()
 
-	results := container.NewStack(list, container.NewCenter(noResults))
-
-	syncEmptyState := func() {
+	entry.OnChanged = func(q string) {
+		shown = matchCommands(all, q)
+		selected = 0
+		list.Refresh()
 		if len(shown) == 0 {
 			list.Hide()
 			noResults.Show()
@@ -256,25 +312,16 @@ func (v *MainView) showCommandPalette() {
 		}
 	}
 
-	entry.OnChanged = func(q string) {
-		shown = matchCommands(all, q)
-		selected = 0
-		list.UnselectAll()
-		list.Refresh()
-		syncEmptyState()
-	}
+	hint := widget.NewLabel(v.lang.T(lang.Palette_hint))
+	hint.Importance = widget.LowImportance
 
 	body := container.NewBorder(
 		container.New(layout.NewCustomPaddedLayout(0, wgtheme.SpaceMD, 0, 0), entry),
-		container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), hint),
-		nil, nil,
-		results,
+		hint, nil, nil,
+		container.NewStack(list, container.NewCenter(noResults)),
 	)
 
-	d = dialog.NewCustom(v.lang.T(lang.Palette_title), v.lang.T(lang.Common_close), body, v.window)
-	d.Resize(fyne.NewSize(600, 440))
-	d.Show()
-
+	s = wgwidget.ShowModalSized(v.window, v.lang.T(lang.Palette_title), fyne.NewSize(600, 400), body)
 	v.window.Canvas().Focus(entry)
 }
 
@@ -302,16 +349,13 @@ func (v *MainView) showShortcuts() {
 
 	items := make([]fyne.CanvasObject, 0, len(rows))
 	for _, r := range rows {
-		key := wgwidget.Value(r.key)
-		keyBox := container.New(layout.NewGridWrapLayout(fyne.NewSize(78, key.MinSize().Height)), key)
-		desc := widget.NewLabel(r.desc)
-		items = append(items, container.NewBorder(nil, nil, keyBox, nil, desc))
+		keyBox := container.New(layout.NewGridWrapLayout(fyne.NewSize(84, 26)),
+			container.NewHBox(wgwidget.Kbd(r.key)))
+		items = append(items, container.NewBorder(nil, nil, keyBox, nil, widget.NewLabel(r.desc)))
 	}
 
-	body := container.NewVScroll(container.New(
-		layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXS), items...))
-
-	d := dialog.NewCustom(l.T(lang.Shortcuts_title), l.T(lang.Common_close), body, v.window)
-	d.Resize(fyne.NewSize(460, 460))
-	d.Show()
+	var s *wgwidget.Surface
+	closeBtn := wgwidget.NewButton(l.T(lang.Common_close), nil, wgwidget.Primary, func() { s.Close() })
+	s = wgwidget.ShowModal(v.window, l.T(lang.Shortcuts_title), 440,
+		container.New(layout.NewCustomPaddedVBoxLayout(0), items...), closeBtn)
 }

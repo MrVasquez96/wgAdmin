@@ -42,6 +42,11 @@ func NewWGAdminTheme(cfg *settings.AppSettings) *WGAdminTheme {
 	return t
 }
 
+// ReduceMotion reports whether the user asked for transitions to be skipped.
+func ReduceMotion() bool {
+	return activeTheme != nil && activeTheme.settings != nil && activeTheme.settings.ReduceMotion
+}
+
 // CurrentVariant returns the resolved theme variant, respecting the user's
 // forced light/dark setting. Use this instead of
 // fyne.CurrentApp().Settings().ThemeVariant() when you need colours that match

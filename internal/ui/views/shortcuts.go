@@ -20,9 +20,16 @@ import (
 func (v *MainView) registerShortcuts() {
 	canvas := v.window.Canvas()
 
+	// While a sheet, modal or menu is open the shortcuts pause: Ctrl+N over an
+	// open form would otherwise stack a second form on top of it.
 	add := func(key fyne.KeyName, mod fyne.KeyModifier, fn func()) {
 		canvas.AddShortcut(&desktop.CustomShortcut{KeyName: key, Modifier: mod},
-			func(fyne.Shortcut) { fn() })
+			func(fyne.Shortcut) {
+				if len(canvas.Overlays().List()) > 0 {
+					return
+				}
+				fn()
+			})
 	}
 
 	ctrl := fyne.KeyModifierControl

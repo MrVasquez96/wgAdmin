@@ -102,25 +102,35 @@ func (t *SSHTerminal) Show() {
 	prompt := Value("$")
 	prompt.Color = p.Accent
 
-	header := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM),
-		container.NewCenter(container.New(
-			layout.NewGridWrapLayout(fyne.NewSize(8, 8)), t.statusDot)),
-		container.NewCenter(t.statusLabel),
-	)
+	// Header: the host as the title, the connection state beside it.
+	host := newText(fmt.Sprintf("%s@%s:%d", t.username, t.host, t.port), wgtheme.TextLG, wgtheme.WeightMono, p.TextPrimary)
+	state := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM),
+		container.NewCenter(container.New(layout.NewGridWrapLayout(fyne.NewSize(8, 8)), t.statusDot)),
+		container.NewCenter(t.statusLabel))
+	header := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceLG),
+		container.NewCenter(iconImage(wgtheme.IconTerminal, p.Accent, 22)),
+		container.NewCenter(host),
+		container.NewCenter(state))
 
 	inputRow := container.NewBorder(nil, nil,
 		container.NewCenter(prompt), nil, t.inputEntry)
 
-	terminalBg := canvas.NewRectangle(p.Background)
+	// The session sits on a framed, darker surface so it reads as a terminal
+	// rather than as part of the window chrome.
+	terminalBg := canvas.NewRectangle(p.InputBackground)
+	terminalBg.CornerRadius = wgtheme.RadiusLG
+	terminalBg.StrokeColor = p.Border
+	terminalBg.StrokeWidth = 1
 
-	t.win.SetContent(container.New(
-		layout.NewCustomPaddedLayout(wgtheme.SpaceMD, wgtheme.SpaceMD, wgtheme.SpaceMD, wgtheme.SpaceMD),
+	t.win.SetContent(WithLayer(t.win, container.New(
+		layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG),
 		container.NewBorder(
-			container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM), header, Hairline()),
+			container.New(layout.NewCustomPaddedLayout(0, wgtheme.SpaceLG, 0, 0), header),
 			container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), inputRow),
 			nil, nil,
-			container.NewStack(terminalBg, t.outputScrol),
-		)))
+			container.NewStack(terminalBg,
+				container.New(layout.NewCustomPaddedLayout(6, 6, 8, 8), t.outputScrol)),
+		))))
 
 	t.win.Show()
 	t.win.Canvas().Focus(t.inputEntry)

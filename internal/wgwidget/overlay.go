@@ -33,6 +33,22 @@ const (
 type Surface struct {
 	root    *overlayRoot
 	OnClose func()
+	// Intercept, when set, is asked before the close button, Esc or a
+	// backdrop click close the surface, e.g. to confirm discarding edits.
+	// It calls close to go ahead. Explicit calls to Close are not intercepted.
+	Intercept func(close func())
+}
+
+// RequestClose closes the surface unless Intercept holds it open.
+func (s *Surface) RequestClose() {
+	if s == nil {
+		return
+	}
+	if s.Intercept != nil {
+		s.Intercept(s.Close)
+		return
+	}
+	s.Close()
 }
 
 // Close removes the surface and runs OnClose once.
@@ -78,7 +94,7 @@ var (
 // Taps that reach the root missed the panel: they landed on the backdrop.
 func (o *overlayRoot) Tapped(*fyne.PointEvent) {
 	if o.dismissable {
-		o.surface.Close()
+		o.surface.RequestClose()
 	}
 }
 
@@ -87,7 +103,7 @@ func (o *overlayRoot) FocusLost()       {}
 func (o *overlayRoot) TypedRune(r rune) {}
 func (o *overlayRoot) TypedKey(ev *fyne.KeyEvent) {
 	if ev.Name == fyne.KeyEscape {
-		o.surface.Close()
+		o.surface.RequestClose()
 	}
 }
 
@@ -192,7 +208,16 @@ func open(win fyne.Window, o *overlayRoot) *Surface {
 
 // frame is the shared chrome of modals and sheets: a title bar with a close
 // button, a scrolling body and a footer of actions.
-func frame(title string, body fyne.CanvasObject, footer []fyne.CanvasObject, close func(), radius float32, full bool) fyne.CanvasObject {
+// bodyMode is how a frame's body handles content taller than the frame.
+type bodyMode int
+
+const (
+	bodyFit    bodyMode = iota // modal: size to content, scroll when capped
+	bodyScroll                 // sheet: fill the height, scroll the content
+	bodyFill                   // sheet: fill the height, content scrolls itself
+)
+
+func frame(title string, body fyne.CanvasObject, footer []fyne.CanvasObject, close func(), radius float32, mode bodyMode) fyne.CanvasObject {
 	p := wgtheme.Current()
 
 	bg := canvas.NewRectangle(p.Surface)
@@ -208,9 +233,17 @@ func frame(title string, body fyne.CanvasObject, footer []fyne.CanvasObject, clo
 				newText(title, wgtheme.TextLG, wgtheme.WeightSemiBold, p.TextPrimary),
 				layout.NewSpacer())))
 
-	var scroller fyne.CanvasObject = container.New(layout.NewCustomPaddedLayout(16, 16, 18, 18), body)
-	if full {
-		scroller = container.NewVScroll(scroller)
+	padded := container.New(layout.NewCustomPaddedLayout(16, 16, 18, 18), body)
+	var scroller fyne.CanvasObject
+	switch mode {
+	case bodyScroll:
+		scroller = container.NewVScroll(padded)
+	case bodyFill:
+		scroller = padded
+	default:
+		// A modal sizes to its content, but a long form must still scroll
+		// once the window is too short for it.
+		scroller = newFitScroll(padded)
 	}
 
 	var foot fyne.CanvasObject
@@ -248,7 +281,7 @@ func guard(obj fyne.CanvasObject) fyne.CanvasObject {
 func ShowModal(win fyne.Window, title string, width float32, body fyne.CanvasObject, footer ...fyne.CanvasObject) *Surface {
 	o := &overlayRoot{place: placeCenter, width: width, dim: true, dismissable: true}
 	var s *Surface
-	o.panel = guard(frame(title, body, footer, func() { s.Close() }, wgtheme.RadiusXL, false))
+	o.panel = guard(frame(title, body, footer, func() { s.RequestClose() }, wgtheme.RadiusXL, bodyFit))
 	s = open(win, o)
 	return s
 }
@@ -266,9 +299,19 @@ const (
 // scrolls. Unlike a modal it does not close on a backdrop click, because
 // sheets hold forms and a stray click must not discard an edit.
 func ShowSheet(win fyne.Window, title string, width SheetWidth, body fyne.CanvasObject, footer ...fyne.CanvasObject) *Surface {
+	return showSheet(win, title, width, body, bodyScroll, footer)
+}
+
+// ShowSheetFill is ShowSheet for content that fills the height and scrolls
+// itself, such as an editor or a table.
+func ShowSheetFill(win fyne.Window, title string, width SheetWidth, body fyne.CanvasObject, footer ...fyne.CanvasObject) *Surface {
+	return showSheet(win, title, width, body, bodyFill, footer)
+}
+
+func showSheet(win fyne.Window, title string, width SheetWidth, body fyne.CanvasObject, mode bodyMode, footer []fyne.CanvasObject) *Surface {
 	o := &overlayRoot{place: placeRight, width: float32(width), dim: true}
 	var s *Surface
-	o.panel = guard(frame(title, body, footer, func() { s.Close() }, 0, true))
+	o.panel = guard(frame(title, body, footer, func() { s.RequestClose() }, 0, mode))
 	s = open(win, o)
 	return s
 }
@@ -289,17 +332,6 @@ type MenuItem struct {
 // ShowMenu opens a popover menu under anchor, right-aligned with it. A click
 // anywhere else closes it.
 func ShowMenu(anchor fyne.CanvasObject, items []MenuItem) *Surface {
-	app := fyne.CurrentApp()
-	c := app.Driver().CanvasForObject(anchor)
-	if c == nil {
-		return nil
-	}
-	win := windowForCanvas(c)
-	if win == nil {
-		return nil
-	}
-
-	p := wgtheme.Current()
 	var s *Surface
 	rows := make([]fyne.CanvasObject, 0, len(items))
 	for _, it := range items {
@@ -315,24 +347,44 @@ func ShowMenu(anchor fyne.CanvasObject, items []MenuItem) *Surface {
 			}
 		}))
 	}
+	list := container.New(layout.NewCustomPaddedVBoxLayout(1), rows...)
+	s = ShowPopover(anchor, list, 180)
+	return s
+}
 
+// ShowPopover floats arbitrary content in a raised panel under anchor,
+// right-aligned with it, at least minWidth wide. A click elsewhere or Esc
+// closes it.
+func ShowPopover(anchor fyne.CanvasObject, content fyne.CanvasObject, minWidth float32) *Surface {
+	app := fyne.CurrentApp()
+	c := app.Driver().CanvasForObject(anchor)
+	if c == nil {
+		return nil
+	}
+	win := windowForCanvas(c)
+	if win == nil {
+		return nil
+	}
+
+	p := wgtheme.Current()
 	bg := canvas.NewRectangle(p.SurfaceRaised)
 	bg.CornerRadius = wgtheme.RadiusLG
 	bg.StrokeColor = p.BorderStrong
 	bg.StrokeWidth = 1
-	list := container.New(layout.NewCustomPaddedLayout(5, 5, 5, 5),
-		container.New(layout.NewCustomPaddedVBoxLayout(1), rows...))
-	panel := container.NewStack(shadowFor(2, bg.CornerRadius), bg, list)
+	panel := container.NewStack(shadowFor(2, bg.CornerRadius), bg,
+		container.New(layout.NewCustomPaddedLayout(5, 5, 5, 5), content))
 
-	d := app.Driver()
-	pos := d.AbsolutePositionForObject(anchor)
 	ms := panel.MinSize()
-	at := fyne.NewPos(pos.X+anchor.Size().Width-fyne.Max(ms.Width, 180), pos.Y+anchor.Size().Height+4)
+	w := fyne.Max(ms.Width, minWidth)
+	pos := app.Driver().AbsolutePositionForObject(anchor)
+	at := fyne.NewPos(pos.X+anchor.Size().Width-w, pos.Y+anchor.Size().Height+4)
+	if at.X < 6 {
+		at.X = 6
+	}
 
 	o := &overlayRoot{place: placeAt, at: at, dismissable: true}
-	o.panel = guard(container.New(layout.NewGridWrapLayout(fyne.NewSize(fyne.Max(ms.Width, 180), ms.Height)), panel))
-	s = open(win, o)
-	return s
+	o.panel = guard(container.New(layout.NewGridWrapLayout(fyne.NewSize(w, ms.Height)), panel))
+	return open(win, o)
 }
 
 func windowForCanvas(c fyne.Canvas) fyne.Window {
@@ -478,4 +530,54 @@ func ellipsize(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
+}
+
+// fitScroll is a vertical scroller whose minimum size is its content's, so a
+// modal can size itself to the content and only scroll when the window caps
+// its height. container.Scroll alone reports a tiny minimum, which would
+// collapse the modal.
+type fitScroll struct {
+	widget.BaseWidget
+	content fyne.CanvasObject
+	scroll  *container.Scroll
+}
+
+func newFitScroll(content fyne.CanvasObject) *fitScroll {
+	f := &fitScroll{content: content, scroll: container.NewVScroll(content)}
+	f.ExtendBaseWidget(f)
+	return f
+}
+
+func (f *fitScroll) MinSize() fyne.Size {
+	ms := f.content.MinSize()
+	// Leave room for the scrollbar so content never sits under it.
+	return fyne.NewSize(ms.Width+4, ms.Height)
+}
+
+func (f *fitScroll) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(f.scroll)
+}
+
+// ShowModalSized opens a modal with a fixed body size, for content with no
+// natural height such as lists.
+func ShowModalSized(win fyne.Window, title string, size fyne.Size, body fyne.CanvasObject, footer ...fyne.CanvasObject) *Surface {
+	sized := container.NewStack(sizedSpacer(size), body)
+	return ShowModal(win, title, size.Width, sized, footer...)
+}
+
+func sizedSpacer(s fyne.Size) fyne.CanvasObject {
+	r := canvas.NewRectangle(color.Transparent)
+	r.SetMinSize(s)
+	return r
+}
+
+// Kbd renders a key or chord as a keycap, for shortcut hints.
+func Kbd(keys string) fyne.CanvasObject {
+	p := wgtheme.Current()
+	label := newText(keys, wgtheme.TextXS+0.5, wgtheme.WeightMono, p.TextSecondary)
+	bg := canvas.NewRectangle(p.SurfaceRaised)
+	bg.CornerRadius = wgtheme.RadiusSM
+	bg.StrokeColor = p.BorderStrong
+	bg.StrokeWidth = 1
+	return container.NewStack(bg, container.New(layout.NewCustomPaddedLayout(2, 3, 6, 6), label))
 }

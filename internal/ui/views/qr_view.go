@@ -2,11 +2,11 @@ package ui
 
 import (
 	"errors"
+	"os"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -111,38 +111,63 @@ func ShowPeerQR(parent fyne.Window, req qrRequest, l *lang.Language) {
 	}
 
 	hint := widget.NewLabel(l.T(lang.Qr_hint))
-	hint.Alignment = fyne.TextAlignCenter
 	hint.Wrapping = fyne.TextWrapWord
 
-	warning := wgwidget.Caption(l.T(lang.Qr_warning_secret))
-	warning.Color = wgtheme.Current().Warning
-	warning.Alignment = fyne.TextAlignCenter
-
-	var d dialog.Dialog
-	copyBtn := widget.NewButtonWithIcon(l.T(lang.Qr_btn_copy_config), wgtheme.IconCopy, func() {
-		parent.Clipboard().SetContent(text)
-	})
+	copied := func(v string) {
+		parent.Clipboard().SetContent(v)
+		wgwidget.ShowToast(parent, wgwidget.ToastSuccess, l.T(lang.Common_copied))
+	}
 
 	// Naming the endpoint the code was built with is the quickest way to catch
 	// a peer that inherited the tunnel default when it needed its own.
-	endpointLine := wgwidget.DimValue(l.Tf(lang.Qr_endpoint, endpoint))
-	endpointLine.TextSize = 11
+	endpointField := wgwidget.NewCopyField(wgtheme.IconGlobe, l.T(lang.Detail_label_endpoint), endpoint, copied)
 
-	// The hint is added bare, not centred: a centred child is shrunk to its
-	// MinSize, and a word-wrapping label's minimum width is a single glyph,
-	// which stacked the text one letter per line. Full width plus centre
-	// alignment wraps it by words instead.
-	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD),
-		container.NewCenter(qr),
+	copyBtn := wgwidget.NewButton(l.T(lang.Qr_btn_copy_config), wgtheme.IconCopy, wgwidget.Secondary, func() {
+		copied(text)
+	})
+	saveBtn := wgwidget.NewButton(l.T(lang.Qr_btn_save), wgtheme.IconDownload, wgwidget.Secondary, func() {
+		helpers.SaveFile(parent, helpers.FileOpts{
+			Title:       l.T(lang.Qr_btn_save),
+			FilterLabel: "WireGuard",
+			Extensions:  []string{".conf"},
+			FileName:    peerFileName(peer.Name) + ".conf",
+		}, func(path string) {
+			if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+				helpers.ShowError(err, parent)
+				return
+			}
+			wgwidget.ShowToast(parent, wgwidget.ToastSuccess, path)
+		})
+	})
+
+	// The QR stays black on white whatever the theme: scanners need it.
+	side := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
 		hint,
-		container.NewCenter(endpointLine),
-		container.NewCenter(warning),
-		container.NewCenter(copyBtn),
+		wgwidget.Card(endpointField, 0),
+		wgwidget.Banner(wgwidget.BannerWarning, l.T(lang.Common_warning), l.T(lang.Qr_warning_secret), nil),
+		container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM), copyBtn, saveBtn),
 	)
+	sideBox := container.New(layout.NewGridWrapLayout(fyne.NewSize(330, side.MinSize().Height)), side)
 
-	d = dialog.NewCustom(l.Tf(lang.Qr_title, peer.Name), l.T(lang.Common_close),
-		container.New(layout.NewCustomPaddedLayout(
-			wgtheme.SpaceMD, wgtheme.SpaceMD, wgtheme.SpaceXL, wgtheme.SpaceXL), body), parent)
-	d.Resize(fyne.NewSize(400, 520))
-	d.Show()
+	body := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceXL),
+		container.NewVBox(qr), sideBox)
+
+	var s *wgwidget.Surface
+	closeBtn := wgwidget.NewButton(l.T(lang.Common_close), nil, wgwidget.Primary, func() { s.Close() })
+	s = wgwidget.ShowModal(parent, l.Tf(lang.Qr_title, peer.Name), 0, body, closeBtn)
+}
+
+// peerFileName makes a peer name safe to use as a file name.
+func peerFileName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "peer"
+	}
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ':
+			return '_'
+		}
+		return r
+	}, name)
 }

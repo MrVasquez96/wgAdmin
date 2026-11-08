@@ -194,3 +194,21 @@ func TestSheetIgnoresBackdropTap(t *testing.T) {
 		t.Error("a modal should close on a backdrop click")
 	}
 }
+
+// TestDataTableNarrowNeverOverlapsActions covers a pane narrower than the
+// columns' minimum widths: the columns must shrink, not run under the row
+// action buttons.
+func TestDataTableNarrowNeverOverlapsActions(t *testing.T) {
+	test.NewTempApp(t)
+	tbl := NewDataTable([]Column{
+		{MinWidth: 200}, {MinWidth: 200, Weight: 1}, {MinWidth: 200},
+	}, func() int { return 0 }, func(int, int) Cell { return Cell{} })
+	tbl.Actions = []RowAction{{Icon: wgtheme.IconQR}, {Icon: wgtheme.IconKey}}
+
+	const w = 400
+	xs, ws := tbl.columnX(w)
+	end := xs[len(xs)-1] + ws[len(ws)-1]
+	if limit := float32(w) - tablePadX - tbl.actionsWidth(); end > limit+0.5 {
+		t.Errorf("columns end at %.1f, past the actions column at %.1f", end, limit)
+	}
+}

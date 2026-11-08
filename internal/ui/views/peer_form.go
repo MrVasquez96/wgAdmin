@@ -12,7 +12,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/MrVasquez96/go-wg/wg"
@@ -123,9 +122,10 @@ func (f *PeerForm) updatePublicKey() {
 	f.generatedPrivateKey = f.privateKeyEntry.Text
 }
 
-// Show displays the peer form dialog
+// Show opens the peer form as a modal over parent. It stays open when
+// validation fails, so a typo costs a correction rather than the whole entry.
 func (f *PeerForm) Show(parent fyne.Window) {
-	generateKeyBtn := widget.NewButtonWithIcon(f.lang.T(lang.Peer_btn_generate_keys), wgtheme.IconRefresh, func() {
+	generateKeyBtn := wgwidget.NewButton(f.lang.T(lang.Peer_btn_generate_keys), wgtheme.IconRefresh, wgwidget.Secondary, func() {
 		priv, pub, err := wg.GenerateKeyPair()
 		if err != nil {
 			helpers.ShowError(err, parent)
@@ -138,61 +138,55 @@ func (f *PeerForm) Show(parent fyne.Window) {
 		f.generatedPrivateKey = priv
 	})
 
-	copyPubKeyBtn := widget.NewButtonWithIcon("", wgtheme.IconCopy, func() {
+	copyPubKeyBtn := wgwidget.NewIconButton(wgtheme.IconCopy, f.lang.T(lang.Common_copy), func() {
 		text := f.publicKeyEntry.Text
 		if text != "" && text != "(invalid key)" {
 			parent.Clipboard().SetContent(text)
+			wgwidget.ShowToast(parent, wgwidget.ToastSuccess, f.lang.T(lang.Status_copied_pubkey))
 		}
 	})
-	form := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_identity)),
-		widget.NewForm(
-			widget.NewFormItem(f.lang.T(lang.Peer_label_name), f.nameEntry),
-		),
 
-		wgwidget.SectionHeader(f.lang.T(lang.Peer_section_keys)),
-		formHint(f.lang.T(lang.Peer_keys_hint)),
-		widget.NewForm(
-			widget.NewFormItem(f.lang.T(lang.Peer_label_private_key),
-				container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry)),
-			widget.NewFormItem(f.lang.T(lang.Peer_label_public_key),
-				container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyEntry)),
-			widget.NewFormItem(f.lang.T(lang.Peer_label_preshared_key), f.presharedKeyEntry),
+	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXL+4),
+		wgwidget.FormSection(wgtheme.IconPeer, f.lang.T(lang.Tunnel_section_identity), "",
+			wgwidget.Field(f.lang.T(lang.Peer_label_name), f.nameEntry, ""),
 		),
-
-		wgwidget.SectionHeader(f.lang.T(lang.Tunnel_section_network)),
-		formHint(f.lang.T(lang.Peer_endpoint_hint)),
-		widget.NewForm(
-			widget.NewFormItem(f.lang.T(lang.Peer_label_allowed_ips_server), f.allowedIPsEntry),
-			widget.NewFormItem(f.lang.T(lang.Peer_label_endpoint), f.endpointEntry),
-			widget.NewFormItem(f.lang.T(lang.Peer_label_keepalive), f.persistentKeepaliveEntry),
+		wgwidget.FormSection(wgtheme.IconKey, f.lang.T(lang.Peer_section_keys), f.lang.T(lang.Peer_keys_hint),
+			wgwidget.Field(f.lang.T(lang.Peer_label_private_key),
+				container.NewBorder(nil, nil, nil, generateKeyBtn, f.privateKeyEntry), ""),
+			wgwidget.Field(f.lang.T(lang.Peer_label_public_key),
+				container.NewBorder(nil, nil, nil, copyPubKeyBtn, f.publicKeyEntry), ""),
+			wgwidget.Field(f.lang.T(lang.Peer_label_preshared_key), f.presharedKeyEntry, ""),
+		),
+		wgwidget.FormSection(wgtheme.IconRoute, f.lang.T(lang.Tunnel_section_network), f.lang.T(lang.Peer_endpoint_hint),
+			wgwidget.Field(f.lang.T(lang.Peer_label_allowed_ips_server), f.allowedIPsEntry, ""),
+			wgwidget.Field(f.lang.T(lang.Peer_label_endpoint), f.endpointEntry, ""),
+			wgwidget.Field(f.lang.T(lang.Peer_label_keepalive), f.persistentKeepaliveEntry, ""),
 		),
 	)
 
-	scrolled := container.NewVScroll(container.New(
-		layout.NewCustomPaddedLayout(0, wgtheme.SpaceMD, 0, wgtheme.SpaceMD), form))
-
-	d := dialog.NewCustomConfirm(f.lang.T(lang.Peer_form_title), f.lang.T(lang.Common_save), f.lang.T(lang.Common_cancel), scrolled, func(confirmed bool) {
-		if !confirmed {
-			if f.onCancel != nil {
-				f.onCancel()
-			}
-			return
-		}
-
+	var s *wgwidget.Surface
+	saved := false
+	cancel := wgwidget.NewButton(f.lang.T(lang.Common_cancel), nil, wgwidget.Secondary, func() { s.Close() })
+	save := wgwidget.NewButton(f.lang.T(lang.Common_save), wgtheme.IconCheck, wgwidget.Primary, func() {
 		peer, errs := f.validate()
 		if len(errs) > 0 {
 			helpers.ShowError(errs[0], parent)
 			return
 		}
-
+		saved = true
+		s.Close()
 		if f.onSave != nil {
 			f.onSave(peer, f.generatedPrivateKey)
 		}
-	}, parent)
+	})
 
-	d.Resize(fyne.NewSize(600, 700))
-	d.Show()
+	s = wgwidget.ShowModal(parent, f.lang.T(lang.Peer_form_title), 560, body, cancel, save)
+	s.OnClose = func() {
+		if !saved && f.onCancel != nil {
+			f.onCancel()
+		}
+	}
+	parent.Canvas().Focus(f.nameEntry)
 }
 
 func (f *PeerForm) validate() (config.PeerConfig, []error) {

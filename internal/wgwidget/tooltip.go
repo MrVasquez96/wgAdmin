@@ -28,6 +28,10 @@ var tooltips struct {
 	pending int // generation counter: a stale timer must not show anything
 }
 
+// TooltipsEnabled turns tooltips off when false; cmd/preview uses it so a
+// pointer that happens to rest over the window does not end up in screenshots.
+var TooltipsEnabled = true
+
 // tooltipHover is called by components on hover changes. text may be empty,
 // in which case nothing is shown.
 func tooltipHover(owner fyne.CanvasObject, text string, in bool) {
@@ -40,7 +44,7 @@ func tooltipHover(owner fyne.CanvasObject, text string, in bool) {
 	}
 	tooltips.pending++
 
-	if !in || text == "" {
+	if !in || text == "" || !TooltipsEnabled {
 		if tooltips.owner == owner || !in {
 			hideTooltipLocked()
 		}

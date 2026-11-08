@@ -109,12 +109,18 @@ func (t *DataTable) columnX(w float32) (xs, ws []float32) {
 		weight += c.Weight
 	}
 	extra := avail - fixed
+	// Narrower than the minimums: scale every column down rather than let the
+	// last ones run under the row actions. Labels truncate with an ellipsis.
+	shrink := float32(1)
 	if extra < 0 {
+		if fixed > 0 && avail > 0 {
+			shrink = avail / fixed
+		}
 		extra = 0
 	}
 	x := float32(tablePadX)
 	for _, c := range t.Columns {
-		cw := c.MinWidth
+		cw := c.MinWidth * shrink
 		if weight > 0 {
 			cw += extra * c.Weight / weight
 		}

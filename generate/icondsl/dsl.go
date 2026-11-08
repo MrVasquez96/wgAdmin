@@ -280,9 +280,9 @@ func Join(parts ...[]Pt) []Pt {
 
 // Icon is one glyph under construction.
 type Icon struct {
-	Name     string
-	Size     float64 // viewBox edge; 24 for glyphs, 64 for illustrations
-	fg, duo  []string
+	Name    string
+	Size    float64 // viewBox edge; 24 for glyphs, 64 for illustrations
+	fg, duo []string
 }
 
 // New starts a 24px icon.

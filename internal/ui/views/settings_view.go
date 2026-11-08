@@ -27,7 +27,7 @@ type SettingsView struct {
 	lang    *lang.Language
 	onApply func(updated *settings.AppSettings)
 
-	win fyne.Window
+	sheet *wgwidget.Surface
 
 	// colorButtons is keyed by settings key, which lets presets, reset and
 	// save all address the swatches uniformly. The previous version threaded
@@ -40,15 +40,16 @@ type SettingsView struct {
 	clientDirEntry   *widget.Entry
 	widthEntry       *widget.Entry
 	heightEntry      *widget.Entry
-	fullscreenCheck  *widget.Check
-	autoRefreshCheck *widget.Check
+	fullscreenCheck  *wgwidget.Switch
+	autoRefreshCheck *wgwidget.Switch
 	refreshSecsEntry *widget.Entry
-	confirmDelCheck  *widget.Check
-	themeSelect      *widget.Select
+	confirmDelCheck  *wgwidget.Switch
+	themeSelect      *choice
 	langSelect       *widget.Select
-	densitySelect    *widget.Select
-	fontSizeSelect   *widget.Select
-	customFontCheck  *widget.Check
+	densitySelect    *choice
+	fontSizeSelect   *choice
+	customFontCheck  *wgwidget.Switch
+	reduceMotion     *wgwidget.Switch
 	workersEntry     *widget.Entry
 	scanTimeoutEntry *widget.Entry
 	privSelect       *widget.Select
@@ -239,6 +240,52 @@ func (sv *SettingsView) currentColor(key string) string {
 	return ""
 }
 
+// choice is a segmented control over string values, standing in for the
+// select boxes the settings used to use for small fixed sets of options.
+type choice struct {
+	*wgwidget.Segmented
+	values []string
+}
+
+func newChoice(values, labels []string, icons []*wgtheme.Icon, current string) *choice {
+	c := &choice{Segmented: wgwidget.NewSegmented(labels, nil), values: values}
+	c.Icons = icons
+	c.SetSelected(current)
+	return c
+}
+
+// SetSelected selects the option with value v.
+func (c *choice) SetSelected(v string) {
+	for i, val := range c.values {
+		if val == v {
+			c.Segmented.SetSelected(i)
+			return
+		}
+	}
+}
+
+// Value is the selected option's value.
+func (c *choice) Value() string {
+	if c.Segmented.Selected < 0 || c.Segmented.Selected >= len(c.values) {
+		return ""
+	}
+	return c.values[c.Segmented.Selected]
+}
+
+// switchRow is a setting toggled by a switch: the label and an optional
+// hint on the left, the switch on the right, as in system settings panels.
+func switchRow(label, hint string, sw *wgwidget.Switch) fyne.CanvasObject {
+	text := widget.NewLabel(label)
+	left := fyne.CanvasObject(text)
+	if hint != "" {
+		h := widget.NewLabel(hint)
+		h.Importance = widget.LowImportance
+		h.Wrapping = fyne.TextWrapWord
+		left = container.New(layout.NewCustomPaddedVBoxLayout(-10), text, h)
+	}
+	return container.NewBorder(nil, nil, nil, container.NewCenter(sw), left)
+}
+
 // NewSettingsView creates a new settings view
 func NewSettingsView(parent fyne.Window, current *settings.AppSettings, onApply func(*settings.AppSettings), language *lang.Language) *SettingsView {
 	return &SettingsView{
@@ -271,26 +318,25 @@ func (sv *SettingsView) button(t colorToken) *wgwidget.ColorButton {
 	if err != nil {
 		col = color.RGBA{R: 128, G: 128, B: 128, A: 255}
 	}
-	btn := wgwidget.NewColorButton(sv.lang.T(t.labelKey), col, sv.win)
+	btn := wgwidget.NewColorButton(sv.lang.T(t.labelKey), col, sv.parent)
 	sv.colorButtons[t.key] = btn
 	return btn
 }
 
-// Show displays the settings window.
+// Show opens Settings as a full-height sheet: a category list on the left
+// and one page at a time on the right.
 func (sv *SettingsView) Show() {
-	sv.win = fyne.CurrentApp().NewWindow(sv.lang.T(lang.Settings_title))
-	sv.win.Resize(fyne.NewSize(940, 720))
-
 	pages := []struct {
 		titleKey string
+		icon     *wgtheme.Icon
 		build    func() fyne.CanvasObject
 	}{
-		{lang.Settings_nav_paths, sv.pagePaths},
-		{lang.Settings_nav_appearance, sv.pageAppearance},
-		{lang.Settings_nav_behavior, sv.pageBehavior},
-		{lang.Settings_nav_scanner, sv.pageScanner},
-		{lang.Settings_nav_privileges, sv.pagePrivileges},
-		{lang.Settings_nav_about, sv.pageAbout},
+		{lang.Settings_nav_paths, wgtheme.IconFolder, sv.pagePaths},
+		{lang.Settings_nav_appearance, wgtheme.IconSun, sv.pageAppearance},
+		{lang.Settings_nav_behavior, wgtheme.IconSettings, sv.pageBehavior},
+		{lang.Settings_nav_scanner, wgtheme.IconScan, sv.pageScanner},
+		{lang.Settings_nav_privileges, wgtheme.IconLock, sv.pagePrivileges},
+		{lang.Settings_nav_about, wgtheme.IconInfo, sv.pageAbout},
 	}
 
 	// Build every page up front: the controls must exist for validate() to
@@ -299,42 +345,41 @@ func (sv *SettingsView) Show() {
 	built := make([]fyne.CanvasObject, len(pages))
 	for i, p := range pages {
 		built[i] = container.NewVScroll(container.New(
-			layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceLG, wgtheme.SpaceLG),
+			layout.NewCustomPaddedLayout(wgtheme.SpaceXS, wgtheme.SpaceXL, wgtheme.SpaceXL, wgtheme.SpaceLG),
 			p.build()))
 	}
 
-	nav := widget.NewList(
-		func() int { return len(pages) },
-		func() fyne.CanvasObject { return widget.NewLabel("") },
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			obj.(*widget.Label).SetText(sv.lang.T(pages[id].titleKey))
-		},
-	)
-	nav.OnSelected = func(id widget.ListItemID) {
-		content.Objects = []fyne.CanvasObject{built[id]}
+	navButtons := make([]*wgwidget.Button, len(pages))
+	selectPage := func(i int) {
+		content.Objects = []fyne.CanvasObject{built[i]}
 		content.Refresh()
+		for j, b := range navButtons {
+			b.Variant = wgwidget.Ghost
+			if j == i {
+				b.Variant = wgwidget.Secondary
+			}
+			b.Refresh()
+		}
 	}
+	navItems := make([]fyne.CanvasObject, len(pages))
+	for i, p := range pages {
+		idx := i
+		navButtons[i] = wgwidget.NewButton(sv.lang.T(p.titleKey), p.icon, wgwidget.Ghost, func() { selectPage(idx) })
+		navItems[i] = container.NewBorder(nil, nil, navButtons[i], nil)
+	}
+	nav := container.New(layout.NewCustomPaddedLayout(0, 0, 0, wgtheme.SpaceLG),
+		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXS), navItems...))
+	body := container.NewBorder(nil, nil,
+		container.NewBorder(nil, nil, nil, wgwidget.VHairline(), nav),
+		nil, content)
 
-	split := container.NewHSplit(wgwidget.RaisedPanel(nav), content)
-	split.SetOffset(0.22)
+	resetBtn := wgwidget.NewButton(sv.lang.T(lang.Settings_btn_reset), wgtheme.IconRefresh, wgwidget.Ghost, sv.reset)
+	cancelBtn := wgwidget.NewButton(sv.lang.T(lang.Common_cancel), nil, wgwidget.Secondary, func() { sv.sheet.Close() })
+	saveBtn := wgwidget.NewButton(sv.lang.T(lang.Common_save), wgtheme.IconCheck, wgwidget.Primary, sv.save)
 
-	saveBtn := widget.NewButtonWithIcon(sv.lang.T(lang.Common_save), wgtheme.IconImport, sv.save)
-	saveBtn.Importance = widget.HighImportance
-
-	resetBtn := widget.NewButtonWithIcon(sv.lang.T(lang.Settings_btn_reset), wgtheme.IconRefresh, sv.reset)
-	cancelBtn := widget.NewButton(sv.lang.T(lang.Common_cancel), func() { sv.win.Close() })
-
-	buttons := container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM),
-		resetBtn, layout.NewSpacer(), cancelBtn, saveBtn)
-
-	sv.win.SetContent(container.New(
-		layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG),
-		container.NewBorder(nil,
-			container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0), buttons),
-			nil, nil, split)))
-
-	nav.Select(0)
-	sv.win.Show()
+	sv.sheet = wgwidget.ShowSheetFill(sv.parent, sv.lang.T(lang.Settings_title), wgwidget.SheetFull, body,
+		resetBtn, cancelBtn, saveBtn)
+	selectPage(0)
 }
 
 func (sv *SettingsView) pagePaths() fyne.CanvasObject {
@@ -352,46 +397,43 @@ func (sv *SettingsView) pagePaths() fyne.CanvasObject {
 	sv.heightEntry = widget.NewEntry()
 	sv.heightEntry.SetText(strconv.Itoa(sv.current.WindowHeight))
 
-	sv.fullscreenCheck = widget.NewCheck(sv.lang.T(lang.Settings_label_fullscreen), nil)
-	sv.fullscreenCheck.Checked = sv.current.StartFullscreen
+	sv.fullscreenCheck = wgwidget.NewSwitch(sv.current.StartFullscreen, nil)
 
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_card_paths)),
-		formHint(sv.lang.T(lang.Settings_card_paths_desc)),
-		widget.NewForm(
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_wg_path), sv.wgPathEntry),
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_client_dir), sv.clientDirEntry),
+	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXL+6),
+		wgwidget.FormSection(wgtheme.IconFolder, sv.lang.T(lang.Settings_card_paths), sv.lang.T(lang.Settings_card_paths_desc),
+			wgwidget.Field(sv.lang.T(lang.Settings_label_wg_path), sv.wgPathEntry, ""),
+			wgwidget.Field(sv.lang.T(lang.Settings_label_client_dir), sv.clientDirEntry, ""),
 		),
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_card_window)),
-		formHint(sv.lang.T(lang.Settings_note_window)),
-		widget.NewForm(
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_width), sv.widthEntry),
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_height), sv.heightEntry),
-			widget.NewFormItem("", sv.fullscreenCheck),
+		wgwidget.FormSection(wgtheme.IconMonitor, sv.lang.T(lang.Settings_card_window), sv.lang.T(lang.Settings_note_window),
+			wgwidget.FieldRow(
+				wgwidget.Field(sv.lang.T(lang.Settings_label_width), sv.widthEntry, ""),
+				wgwidget.Field(sv.lang.T(lang.Settings_label_height), sv.heightEntry, ""),
+			),
+			switchRow(sv.lang.T(lang.Settings_label_fullscreen), "", sv.fullscreenCheck),
 		),
 	)
 }
 
 func (sv *SettingsView) pageAppearance() fyne.CanvasObject {
-	sv.fontSizeSelect = widget.NewSelect([]string{"small", "normal", "large"}, nil)
-	sv.fontSizeSelect.SetSelected(sv.current.FontSize)
+	sv.fontSizeSelect = newChoice([]string{"small", "normal", "large"},
+		[]string{"A−", "A", "A+"}, nil, sv.current.FontSize)
 
-	sv.customFontCheck = widget.NewCheck(sv.lang.T(lang.Settings_label_custom_font), nil)
-	sv.customFontCheck.Checked = sv.current.UseCustomFont
+	sv.customFontCheck = wgwidget.NewSwitch(sv.current.UseCustomFont, nil)
+	sv.reduceMotion = wgwidget.NewSwitch(sv.current.ReduceMotion, nil)
 
-	sv.densitySelect = widget.NewSelect(
-		[]string{settings.DensityComfortable, settings.DensityCompact}, nil)
-	sv.densitySelect.SetSelected(sv.current.Density)
+	sv.densitySelect = newChoice([]string{settings.DensityComfortable, settings.DensityCompact},
+		[]string{settings.DensityComfortable, settings.DensityCompact}, nil, sv.current.Density)
 
-	sv.themeSelect = widget.NewSelect([]string{"system", "light", "dark"}, nil)
-	sv.themeSelect.SetSelected(sv.current.ThemeVariant)
+	sv.themeSelect = newChoice([]string{"system", "light", "dark"},
+		[]string{"System", "Light", "Dark"},
+		[]*wgtheme.Icon{wgtheme.IconMonitor, wgtheme.IconSun, wgtheme.IconMoon}, sv.current.ThemeVariant)
 
 	// Presets write every dark token at once, which is the only practical way
 	// to get a coherent scheme out of 22 individual swatches.
 	presetSelect := widget.NewSelect(wgtheme.PresetNames(), nil)
 	presetSelect.PlaceHolder = sv.lang.T(lang.Settings_label_preset)
 
-	applyPreset := widget.NewButtonWithIcon(sv.lang.T(lang.Settings_btn_apply_preset), wgtheme.IconCheck, func() {
+	applyPreset := wgwidget.NewButton(sv.lang.T(lang.Settings_btn_apply_preset), wgtheme.IconCheck, wgwidget.Secondary, func() {
 		preset, ok := wgtheme.FindPreset(presetSelect.Selected)
 		if !ok {
 			return
@@ -405,16 +447,8 @@ func (sv *SettingsView) pageAppearance() fyne.CanvasObject {
 				btn.SetColor(col)
 			}
 		}
-		helpers.ShowInformation(sv.lang.T(lang.Settings_card_appearance),
-			sv.lang.Tf(lang.Settings_preset_applied, preset.Name), sv.win)
+		wgwidget.ShowToast(sv.parent, wgwidget.ToastSuccess, sv.lang.Tf(lang.Settings_preset_applied, preset.Name))
 	})
-
-	basics := widget.NewForm(
-		widget.NewFormItem(sv.lang.T(lang.Settings_label_theme), sv.themeSelect),
-		widget.NewFormItem(sv.lang.T(lang.Settings_label_font_size), sv.fontSizeSelect),
-		widget.NewFormItem(sv.lang.T(lang.Settings_label_density), sv.densitySelect),
-		widget.NewFormItem("", sv.customFontCheck),
-	)
 
 	presetRow := container.NewBorder(nil, nil, nil, applyPreset, presetSelect)
 
@@ -425,17 +459,27 @@ func (sv *SettingsView) pageAppearance() fyne.CanvasObject {
 			sv.colorGroupsUI(lightColorGroups())),
 	)
 
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_card_appearance)),
-		formHint(sv.lang.T(lang.Settings_card_appearance_desc)),
-		basics,
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_label_preset)),
-		formHint(sv.lang.T(lang.Settings_preset_desc)),
-		presetRow,
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_advanced_tokens)),
-		formHint(sv.lang.T(lang.Settings_advanced_tokens_desc)),
-		advanced,
-		formHint(sv.lang.T(lang.Settings_note_appearance)),
+	left := func(obj fyne.CanvasObject) fyne.CanvasObject {
+		return container.NewBorder(nil, nil, obj, nil)
+	}
+
+	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXL+6),
+		wgwidget.FormSection(wgtheme.IconSun, sv.lang.T(lang.Settings_card_appearance), sv.lang.T(lang.Settings_card_appearance_desc),
+			wgwidget.Field(sv.lang.T(lang.Settings_label_theme), left(sv.themeSelect), ""),
+			wgwidget.FieldRow(
+				wgwidget.Field(sv.lang.T(lang.Settings_label_font_size), left(sv.fontSizeSelect), ""),
+				wgwidget.Field(sv.lang.T(lang.Settings_label_density), left(sv.densitySelect), ""),
+			),
+			switchRow(sv.lang.T(lang.Settings_label_custom_font), "", sv.customFontCheck),
+			switchRow(sv.lang.T(lang.Settings_label_reduce_motion), sv.lang.T(lang.Settings_label_reduce_motion_hint), sv.reduceMotion),
+		),
+		wgwidget.FormSection(wgtheme.IconCommand, sv.lang.T(lang.Settings_label_preset), sv.lang.T(lang.Settings_preset_desc),
+			presetRow,
+		),
+		wgwidget.FormSection(wgtheme.IconSettings, sv.lang.T(lang.Settings_advanced_tokens), sv.lang.T(lang.Settings_advanced_tokens_desc),
+			advanced,
+			formHint(sv.lang.T(lang.Settings_note_appearance)),
+		),
 	)
 }
 
@@ -456,14 +500,12 @@ func (sv *SettingsView) colorGroupsUI(groups []colorGroup) fyne.CanvasObject {
 }
 
 func (sv *SettingsView) pageBehavior() fyne.CanvasObject {
-	sv.autoRefreshCheck = widget.NewCheck(sv.lang.T(lang.Settings_label_auto_refresh), nil)
-	sv.autoRefreshCheck.Checked = sv.current.AutoRefreshEnabled
+	sv.autoRefreshCheck = wgwidget.NewSwitch(sv.current.AutoRefreshEnabled, nil)
 
 	sv.refreshSecsEntry = widget.NewEntry()
 	sv.refreshSecsEntry.SetText(strconv.Itoa(sv.current.AutoRefreshSecs))
 
-	sv.confirmDelCheck = widget.NewCheck(sv.lang.T(lang.Settings_label_confirm_delete), nil)
-	sv.confirmDelCheck.Checked = sv.current.ConfirmBeforeDelete
+	sv.confirmDelCheck = wgwidget.NewSwitch(sv.current.ConfirmBeforeDelete, nil)
 
 	langOptions := make([]string, 0, len(lang.AvailableLanguages))
 	sv.langCodeToDisplay = make(map[string]string)
@@ -474,14 +516,11 @@ func (sv *SettingsView) pageBehavior() fyne.CanvasObject {
 	sv.langSelect = widget.NewSelect(langOptions, nil)
 	sv.langSelect.SetSelected(sv.langCodeToDisplay[sv.current.Language])
 
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_card_behavior)),
-		widget.NewForm(
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_language), sv.langSelect),
-			widget.NewFormItem("", sv.autoRefreshCheck),
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_refresh_interval), sv.refreshSecsEntry),
-			widget.NewFormItem("", sv.confirmDelCheck),
-		),
+	return wgwidget.FormSection(wgtheme.IconSettings, sv.lang.T(lang.Settings_card_behavior), "",
+		wgwidget.Field(sv.lang.T(lang.Settings_label_language), sv.langSelect, ""),
+		switchRow(sv.lang.T(lang.Settings_label_auto_refresh), "", sv.autoRefreshCheck),
+		wgwidget.Field(sv.lang.T(lang.Settings_label_refresh_interval), sv.refreshSecsEntry, ""),
+		switchRow(sv.lang.T(lang.Settings_label_confirm_delete), "", sv.confirmDelCheck),
 	)
 }
 
@@ -492,11 +531,10 @@ func (sv *SettingsView) pageScanner() fyne.CanvasObject {
 	sv.scanTimeoutEntry = widget.NewEntry()
 	sv.scanTimeoutEntry.SetText(strconv.Itoa(sv.current.ScanTimeoutSecs))
 
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_card_scanner)),
-		widget.NewForm(
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_scan_workers), sv.workersEntry),
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_scan_timeout), sv.scanTimeoutEntry),
+	return wgwidget.FormSection(wgtheme.IconScan, sv.lang.T(lang.Settings_card_scanner), "",
+		wgwidget.FieldRow(
+			wgwidget.Field(sv.lang.T(lang.Settings_label_scan_workers), sv.workersEntry, ""),
+			wgwidget.Field(sv.lang.T(lang.Settings_label_scan_timeout), sv.scanTimeoutEntry, ""),
 		),
 	)
 }
@@ -518,11 +556,8 @@ func (sv *SettingsView) pagePrivileges() fyne.CanvasObject {
 	note := widget.NewRichTextFromMarkdown(sv.lang.T(lang.Settings_privilege_desc))
 	note.Wrapping = fyne.TextWrapWord
 
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_card_privilege)),
-		formHint(sv.lang.T(lang.Settings_card_privilege_desc)),
-		widget.NewForm(
-			widget.NewFormItem(sv.lang.T(lang.Settings_label_privilege_method), sv.privSelect)),
+	return wgwidget.FormSection(wgtheme.IconLock, sv.lang.T(lang.Settings_card_privilege), sv.lang.T(lang.Settings_card_privilege_desc),
+		wgwidget.Field(sv.lang.T(lang.Settings_label_privilege_method), sv.privSelect, ""),
 		note,
 	)
 }
@@ -530,8 +565,6 @@ func (sv *SettingsView) pagePrivileges() fyne.CanvasObject {
 // pageAbout surfaces the environment facts and the keyboard map, so the
 // shortcuts are discoverable from the UI rather than only from the palette.
 func (sv *SettingsView) pageAbout() fyne.CanvasObject {
-	const labelWidth = 110
-
 	privilege := sv.lang.T(lang.Main_chip_no_root)
 	if os.Geteuid() == 0 {
 		privilege = sv.lang.T(lang.Main_chip_root)
@@ -559,22 +592,26 @@ func (sv *SettingsView) pageAbout() fyne.CanvasObject {
 	}
 
 	rows := make([]fyne.CanvasObject, 0, len(shortcuts))
-	for _, s := range shortcuts {
-		k := wgwidget.Value(s.key)
-		keyBox := container.New(layout.NewGridWrapLayout(fyne.NewSize(74, k.MinSize().Height)), k)
-		rows = append(rows, container.NewBorder(nil, nil, keyBox, nil, widget.NewLabel(s.desc)))
+	for _, sc := range shortcuts {
+		keyBox := container.New(layout.NewGridWrapLayout(fyne.NewSize(84, 26)), container.NewHBox(wgwidget.Kbd(sc.key)))
+		rows = append(rows, container.NewBorder(nil, nil, keyBox, nil, widget.NewLabel(sc.desc)))
 	}
 
-	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
-		wgwidget.SectionHeader(sv.lang.T(lang.Settings_nav_about)),
-		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM),
-			wgwidget.KeyValue(sv.lang.T(lang.Settings_about_version), version, labelWidth),
-			wgwidget.KeyValue(sv.lang.T(lang.Settings_about_backend), sv.lang.T(lang.Main_chip_backend), labelWidth),
-			wgwidget.KeyValue(sv.lang.T(lang.Settings_about_config), sv.current.WGConfigPath, labelWidth),
-			wgwidget.KeyValue(sv.lang.T(lang.Settings_about_privilege), privilege, labelWidth),
+	fact := func(icon *wgtheme.Icon, label, value string) fyne.CanvasObject {
+		return wgwidget.NewCopyField(icon, label, value, nil)
+	}
+
+	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXL+6),
+		wgwidget.FormSection(wgtheme.IconInfo, sv.lang.T(lang.Settings_nav_about), "",
+			wgwidget.Card(container.New(layout.NewGridLayoutWithColumns(2),
+				fact(wgtheme.IconBrand, sv.lang.T(lang.Settings_about_version), version),
+				fact(wgtheme.IconTerminal, sv.lang.T(lang.Settings_about_backend), sv.lang.T(lang.Main_chip_backend)),
+				fact(wgtheme.IconFolder, sv.lang.T(lang.Settings_about_config), sv.current.WGConfigPath),
+				fact(wgtheme.IconLock, sv.lang.T(lang.Settings_about_privilege), privilege),
+			), 0),
 		),
-		wgwidget.SectionHeader(sv.lang.T(lang.Shortcuts_title)),
-		container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXS), rows...),
+		wgwidget.FormSection(wgtheme.IconKeyboard, sv.lang.T(lang.Shortcuts_title), "",
+			container.New(layout.NewCustomPaddedVBoxLayout(0), rows...)),
 	)
 }
 
@@ -582,14 +619,14 @@ func (sv *SettingsView) pageAbout() fyne.CanvasObject {
 func (sv *SettingsView) save() {
 	updated, err := sv.validate()
 	if err != nil {
-		helpers.ShowError(err, sv.win)
+		helpers.ShowError(err, sv.parent)
 		return
 	}
 	updated.Save(fyne.CurrentApp().Preferences())
+	sv.sheet.Close()
 	if sv.onApply != nil {
 		sv.onApply(updated)
 	}
-	sv.win.Close()
 }
 
 // reset restores every control to its default.
@@ -604,10 +641,10 @@ func (sv *SettingsView) reset() {
 			sv.clientDirEntry.SetText(settings.DefaultClientConfigDir)
 			sv.widthEntry.SetText(strconv.Itoa(settings.DefaultWindowWidth))
 			sv.heightEntry.SetText(strconv.Itoa(settings.DefaultWindowHeight))
-			sv.fullscreenCheck.SetChecked(settings.DefaultStartFullscreen)
-			sv.autoRefreshCheck.SetChecked(settings.DefaultAutoRefreshEnabled)
+			sv.fullscreenCheck.SetOn(settings.DefaultStartFullscreen)
+			sv.autoRefreshCheck.SetOn(settings.DefaultAutoRefreshEnabled)
 			sv.refreshSecsEntry.SetText(strconv.Itoa(settings.DefaultAutoRefreshSecs))
-			sv.confirmDelCheck.SetChecked(settings.DefaultConfirmBeforeDelete)
+			sv.confirmDelCheck.SetOn(settings.DefaultConfirmBeforeDelete)
 			sv.themeSelect.SetSelected(settings.DefaultThemeVariant)
 			sv.langSelect.SetSelected(sv.langCodeToDisplay[settings.DefaultLanguage])
 			sv.densitySelect.SetSelected(settings.DefaultDensity)
@@ -615,7 +652,8 @@ func (sv *SettingsView) reset() {
 			sv.scanTimeoutEntry.SetText(strconv.Itoa(settings.DefaultScanTimeoutSecs))
 			sv.privSelect.SetSelected(settings.DefaultPrivilegeEscalation)
 			sv.fontSizeSelect.SetSelected(settings.DefaultFontSize)
-			sv.customFontCheck.SetChecked(settings.DefaultUseCustomFont)
+			sv.customFontCheck.SetOn(settings.DefaultUseCustomFont)
+			sv.reduceMotion.SetOn(settings.DefaultReduceMotion)
 
 			// One loop over the token tables replaces the 38-line block the
 			// previous version had to keep in sync by hand.
@@ -630,7 +668,7 @@ func (sv *SettingsView) reset() {
 					}
 				}
 			}
-		}, sv.win)
+		}, sv.parent)
 }
 
 // validate turns the controls into a settings struct, rejecting bad input.
@@ -671,17 +709,17 @@ func (sv *SettingsView) validate() (*settings.AppSettings, error) {
 		return nil, errors.New(sv.lang.T(lang.Error_privilege_invalid))
 	}
 
-	themeVariant := sv.themeSelect.Selected
+	themeVariant := sv.themeSelect.Value()
 	if themeVariant != "system" && themeVariant != "light" && themeVariant != "dark" {
 		return nil, errors.New(sv.lang.T(lang.Error_theme_invalid))
 	}
 
-	fontSize := sv.fontSizeSelect.Selected
+	fontSize := sv.fontSizeSelect.Value()
 	if fontSize != "small" && fontSize != "normal" && fontSize != "large" {
 		return nil, errors.New(sv.lang.T(lang.Error_fontsize_invalid))
 	}
 
-	density := sv.densitySelect.Selected
+	density := sv.densitySelect.Value()
 	if density != settings.DensityCompact && density != settings.DensityComfortable {
 		density = settings.DefaultDensity
 	}
@@ -701,10 +739,10 @@ func (sv *SettingsView) validate() (*settings.AppSettings, error) {
 		ClientConfigDir:     sv.clientDirEntry.Text,
 		WindowWidth:         width,
 		WindowHeight:        height,
-		StartFullscreen:     sv.fullscreenCheck.Checked,
-		AutoRefreshEnabled:  sv.autoRefreshCheck.Checked,
+		StartFullscreen:     sv.fullscreenCheck.On,
+		AutoRefreshEnabled:  sv.autoRefreshCheck.On,
 		AutoRefreshSecs:     refreshSecs,
-		ConfirmBeforeDelete: sv.confirmDelCheck.Checked,
+		ConfirmBeforeDelete: sv.confirmDelCheck.On,
 		ThemeVariant:        themeVariant,
 		ScanWorkers:         workers,
 		ScanTimeoutSecs:     scanTimeout,
@@ -712,7 +750,8 @@ func (sv *SettingsView) validate() (*settings.AppSettings, error) {
 		FontSize:            fontSize,
 		Language:            langCode,
 		Density:             density,
-		UseCustomFont:       sv.customFontCheck.Checked,
+		UseCustomFont:       sv.customFontCheck.On,
+		ReduceMotion:        sv.reduceMotion.On,
 		AccentColor:         h(settings.KeyLightAccentColor, settings.DefaultLightAccentColor),
 
 		LightAccentColor:           h(settings.KeyLightAccentColor, settings.DefaultLightAccentColor),

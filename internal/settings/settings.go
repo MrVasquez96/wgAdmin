@@ -18,6 +18,7 @@ const (
 	KeyPrivilegeEscalation = "privilege_escalation"
 	KeyFontSize            = "font_size"
 	KeyUseCustomFont       = "use_custom_font"
+	KeyReduceMotion        = "reduce_motion"
 	KeyLanguage            = "language"
 	KeyDensity             = "density"
 	KeyAccentColor         = "accent_color" // Deprecated: use KeyLightAccentColor and KeyDarkAccentColor
@@ -87,6 +88,7 @@ const (
 	DefaultPrivilegeEscalation = "none"
 	DefaultFontSize            = "normal"
 	DefaultUseCustomFont       = true
+	DefaultReduceMotion        = false
 	DefaultLanguage            = "english"
 	DefaultDensity             = DensityComfortable
 	DefaultAccentColor         = "#1a73e8" // Deprecated: use DefaultLightAccentColor
@@ -169,6 +171,7 @@ type AppSettings struct {
 	Density             string
 	AccentColor         string // Deprecated: use LightAccentColor and DarkAccentColor
 	UseCustomFont       bool
+	ReduceMotion        bool // skip UI transitions and pulsing indicators
 
 	// Light mode colors
 	LightAccentColor           string
@@ -239,6 +242,7 @@ func Load(prefs fyne.Preferences) *AppSettings {
 		Density:             prefs.StringWithFallback(KeyDensity, DefaultDensity),
 		AccentColor:         prefs.StringWithFallback(KeyAccentColor, DefaultAccentColor),
 		UseCustomFont:       prefs.BoolWithFallback(KeyUseCustomFont, DefaultUseCustomFont),
+		ReduceMotion:        prefs.BoolWithFallback(KeyReduceMotion, DefaultReduceMotion),
 
 		// Light mode colors
 		LightAccentColor:           prefs.StringWithFallback(KeyLightAccentColor, DefaultLightAccentColor),
@@ -309,6 +313,7 @@ func (s *AppSettings) Save(prefs fyne.Preferences) {
 	prefs.SetString(KeyDensity, s.Density)
 	prefs.SetString(KeyAccentColor, s.AccentColor)
 	prefs.SetBool(KeyUseCustomFont, s.UseCustomFont)
+	prefs.SetBool(KeyReduceMotion, s.ReduceMotion)
 
 	// Light mode colors
 	prefs.SetString(KeyLightAccentColor, s.LightAccentColor)

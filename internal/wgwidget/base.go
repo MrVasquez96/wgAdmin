@@ -19,7 +19,7 @@ import (
 // ReduceMotion, when it returns true, makes every transition jump straight to
 // its end state. It is a variable so settings can wire it up without this
 // package importing them.
-var ReduceMotion = func() bool { return false }
+var ReduceMotion = wgtheme.ReduceMotion
 
 // newText builds text at a type-scale size and weight. When the user has
 // turned custom fonts off, wgtheme.Font returns nil and the closest TextStyle
@@ -100,7 +100,11 @@ var (
 // Call it once, when setting the window content.
 func WithLayer(win fyne.Window, content fyne.CanvasObject) fyne.CanvasObject {
 	l := &Layer{Container: container.NewWithoutLayout()}
-	pushLayer(win.Canvas(), l)
+	// The window's layer is always the bottom of its stack; calling this again
+	// (e.g. rebuilding the window after a theme change) replaces it.
+	layersMu.Lock()
+	layers[win.Canvas()] = []*Layer{l}
+	layersMu.Unlock()
 	return container.NewStack(content, l.Container)
 }
 

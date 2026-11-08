@@ -178,14 +178,14 @@ func build(w fyne.Window, cfg *settings.AppSettings, setTheme func(string)) *con
 	}
 	fields := section("Copy fields (hover, click)",
 		container.New(layout.NewGridLayoutWithColumns(2),
-			wgwidget.NewCopyField(wgtheme.IconRoute, "Address", "10.50.2.1/32", copied),
-			wgwidget.NewCopyField(wgtheme.IconGlobe, "Endpoint", "example.com:51832", copied),
+			wgwidget.NewCopyField(wgtheme.IconRoute, "Address", "10.8.0.1/24", copied),
+			wgwidget.NewCopyField(wgtheme.IconGlobe, "Endpoint", "vpn.example.com:51820", copied),
 			wgwidget.NewCopyField(wgtheme.IconPlug, "Listen port", "auto", nil),
 			wgwidget.NewCopyField(wgtheme.IconRuler, "MTU", "1420", copied),
 			wgwidget.NewCopyField(wgtheme.IconDNS, "DNS", "1.1.1.1, 9.9.9.9", copied),
 			wgwidget.NewCopyField(wgtheme.IconTable, "Table", "auto", copied),
-			wgwidget.NewCopyField(wgtheme.IconKey, "Public key", "wdNCKwHAQ/AByQM8XaPPCUrHb7WI8n5N9kn2qBYlNQU=", copied),
-			wgwidget.NewCopyField(wgtheme.IconDoc, "Config", "/etc/wireguard/wgMockup.conf", copied),
+			wgwidget.NewCopyField(wgtheme.IconKey, "Public key", "q3Rk0yXJmT2c9vB4nE7wLpA1sZ8uHdF6gK5oViY0xQc=", copied),
+			wgwidget.NewCopyField(wgtheme.IconDoc, "Config", "/etc/wireguard/home-lab.conf", copied),
 		),
 	)
 
@@ -195,10 +195,10 @@ func build(w fyne.Window, cfg *settings.AppSettings, setTheme func(string)) *con
 		state                     int
 	}
 	peers := []peer{
-		{"peer_mock_1", "10.50.2.2/32", "example.com:51832", "12s ago", "1.2 GiB", "88 MiB", 0},
-		{"peer_mock_2", "10.50.2.3/32", "example.com:51833", "1m ago", "320 MiB", "12 MiB", 1},
-		{"peer_mock_3", "10.50.2.4/32", "—", "3h ago", "4 KiB", "1 KiB", 2},
-		{"wvmPZd4//HS…", "10.2.0.0/22, 10.2.4.0/22", "wg1.mohntechnology.no:51834", "—", "—", "—", 3},
+		{"laptop", "10.8.0.2/32", "vpn.example.com:51820", "12s ago", "1.2 GiB", "88 MiB", 0},
+		{"phone", "10.8.0.3/32", "vpn.example.com:51820", "1m ago", "320 MiB", "12 MiB", 1},
+		{"nas", "10.8.0.4/32", "—", "3h ago", "4 KiB", "1 KiB", 2},
+		{"Rk7Tq2/Lm9x…", "10.30.0.0/22, 10.30.4.0/22", "dc.example.net:51820", "—", "—", "—", 3},
 	}
 	tones := []func() wgwidget.Cell{
 		func() wgwidget.Cell { return wgwidget.Cell{Dot: p.Success, Live: true} },
@@ -275,16 +275,16 @@ func build(w fyne.Window, cfg *settings.AppSettings, setTheme func(string)) *con
 	var sheet *wgwidget.Surface
 	modalBtn := wgwidget.NewButton("Modal", wgtheme.IconInfo, wgwidget.Secondary, func() {
 		var s *wgwidget.Surface
-		s = wgwidget.ShowModal(w, "Delete wgMockup?", 440,
+		s = wgwidget.ShowModal(w, "Delete home-lab?", 440,
 			widget.NewLabel("The tunnel's config file is removed.\nA backup is kept."),
 			wgwidget.NewButton("Cancel", nil, wgwidget.Secondary, func() { s.Close() }),
 			wgwidget.NewButton("Delete tunnel", wgtheme.IconTrash, wgwidget.DangerSolid, func() { s.Close() }))
 	})
 	sheetBtn := wgwidget.NewButton("Sheet", wgtheme.IconEdit, wgwidget.Secondary, func() {
 		name := widget.NewEntry()
-		name.SetText("wgMockup")
+		name.SetText("home-lab")
 		addr := widget.NewEntry()
-		addr.SetText("10.50.2.1/32")
+		addr.SetText("10.8.0.1/24")
 		port := widget.NewEntry()
 		port.SetPlaceHolder("auto")
 		mtu := widget.NewEntry()
@@ -300,7 +300,7 @@ func build(w fyne.Window, cfg *settings.AppSettings, setTheme func(string)) *con
 			wgwidget.NewButton("Cancel", nil, wgwidget.Secondary, func() { sheet.Close() }),
 			wgwidget.NewButton("Save", wgtheme.IconCheck, wgwidget.Primary, func() { sheet.Close() }))
 	})
-	toastBtn := wgwidget.NewButton("Toast", wgtheme.IconSuccess, wgwidget.Secondary, toast("Copied Endpoint: example.com:51832"))
+	toastBtn := wgwidget.NewButton("Toast", wgtheme.IconSuccess, wgwidget.Secondary, toast("Copied Endpoint: vpn.example.com:51820"))
 	demoButtons["modal"], demoButtons["sheet"], demoButtons["menu"], demoButtons["toast"] = modalBtn, sheetBtn, moreBtn, toastBtn
 	overlays := section("Overlays",
 		row(

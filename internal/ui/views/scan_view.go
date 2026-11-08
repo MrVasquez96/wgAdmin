@@ -21,7 +21,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -43,20 +42,13 @@ type ScanView struct {
 
 	// UI handles kept so results can be repainted in place instead of the
 	// whole list being rebuilt on every hit.
+	//
+	// win is wherever the scan is showing: the main window while it is a
+	// sheet, its own window after "Open in window". Dialogs and exports go to
+	// whichever it currently is.
 	win        fyne.Window
-	table      *widget.Table
+	table      *wgwidget.DataTable
 	countLabel *canvas.Text
-}
-
-// scanColumns defines the results table.
-var scanColumns = []struct {
-	titleKey string
-	width    float32
-}{
-	{lang.Scan_col_address, 150},
-	{lang.Scan_col_identity, 260},
-	{lang.Scan_col_ports, 260},
-	{lang.Scan_col_actions, 190},
 }
 
 // NewScanView creates a new scan view for the networks in plan (see PlanScan).
@@ -78,15 +70,15 @@ func NewScanView(ifaceName, ip string, plan ScanPlan, workers, timeoutSecs int, 
 	}
 }
 
-func (v *ScanView) Show() {
+// Show opens the scanner as a large sheet over parent. "Open in window"
+// moves the running scan into a window of its own, for keeping an eye on it
+// while working elsewhere in the app.
+func (v *ScanView) Show(parent fyne.Window) {
 	if v.plan.IsEmpty() {
 		return
 	}
-
-	win := fyne.CurrentApp().NewWindow(v.lang.Tf(lang.Scan_title, v.ifaceName))
-	win.Resize(fyne.NewSize(960, 640))
-	win.SetOnClosed(func() { v.stopped.Store(true) })
-	v.win = win
+	v.win = parent
+	title := v.lang.Tf(lang.Scan_title, v.ifaceName)
 
 	progress := widget.NewProgressBar()
 	progress.TextFormatter = func() string { return "" } // the count carries the detail
@@ -94,7 +86,7 @@ func (v *ScanView) Show() {
 	statusLabel := wgwidget.DimValue("")
 	countLabel := wgwidget.Caption("")
 
-	v.table = v.buildResultsTable(win)
+	v.table = v.buildResultsTable()
 
 	allOption := v.lang.Tf(lang.Scan_all_networks, len(v.plan.Direct)+len(v.plan.Wide))
 	options := []string{allOption}
@@ -106,22 +98,17 @@ func (v *ScanView) Show() {
 	networkSelect := widget.NewSelectEntry(options)
 	networkSelect.SetText(allOption)
 
-	rescanBtn := widget.NewButtonWithIcon(v.lang.T(lang.Scan_rescan), wgtheme.IconRefresh, nil)
-	rescanBtn.Importance = widget.HighImportance
-
-	stopBtn := widget.NewButtonWithIcon(v.lang.T(lang.Scan_btn_stop), wgtheme.IconStop, func() {
+	rescanBtn := wgwidget.NewButton(v.lang.T(lang.Scan_rescan), wgtheme.IconRefresh, wgwidget.Primary, nil)
+	stopBtn := wgwidget.NewButton(v.lang.T(lang.Scan_btn_stop), wgtheme.IconStop, wgwidget.Danger, func() {
 		v.stopped.Store(true)
 	})
-	stopBtn.Importance = widget.DangerImportance
-
-	exportBtn := widget.NewButtonWithIcon(v.lang.T(lang.Scan_btn_export), wgtheme.IconDownload, func() {
-		v.exportCSV(win)
+	exportBtn := wgwidget.NewButton(v.lang.T(lang.Scan_btn_export), wgtheme.IconDownload, wgwidget.Secondary, func() {
+		v.exportCSV(v.win)
 	})
 
-	controls := container.NewBorder(nil, nil,
-		wgwidget.Caption(v.lang.T(lang.Scan_label_network)),
-		container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM), stopBtn, rescanBtn, exportBtn),
-		networkSelect,
+	controls := container.NewBorder(nil, nil, nil,
+		container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM), stopBtn, rescanBtn),
+		wgwidget.Field(v.lang.T(lang.Scan_label_network), networkSelect, ""),
 	)
 
 	progressRow := container.NewBorder(nil, nil,
@@ -130,27 +117,46 @@ func (v *ScanView) Show() {
 		container.NewCenter(progress),
 	)
 
-	headerRows := []fyne.CanvasObject{
-		controls,
-		progressRow,
-		statusLabel,
-	}
+	headerRows := []fyne.CanvasObject{controls, progressRow, statusLabel}
 	if len(v.plan.Skipped) > 0 {
 		// Networks too large to scan are worth naming: silently ignoring
 		// 0.0.0.0/0 looks like the scanner simply missed them.
-		note := widget.NewLabel(v.lang.Tf(lang.Scan_skipped_networks, strings.Join(v.plan.Skipped, ", ")))
-		note.Wrapping = fyne.TextWrapWord
-		note.Importance = widget.LowImportance
-		headerRows = append(headerRows, note)
+		headerRows = append(headerRows, wgwidget.Banner(wgwidget.BannerInfo, v.lang.T(lang.Common_info),
+			v.lang.Tf(lang.Scan_skipped_networks, strings.Join(v.plan.Skipped, ", ")), nil))
 	}
-	headerRows = append(headerRows, wgwidget.Hairline())
 
 	header := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD), headerRows...)
+	content := container.NewBorder(
+		container.New(layout.NewCustomPaddedLayout(0, wgtheme.SpaceMD, 0, 0), header),
+		nil, nil, nil, v.table)
 
-	win.SetContent(container.New(
-		layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceLG),
-		container.NewBorder(header, nil, nil, nil, v.table)))
-	win.Show()
+	var sheet *wgwidget.Surface
+	poppedOut := false
+	popOutBtn := wgwidget.NewButton(v.lang.T(lang.Scan_pop_out), wgtheme.IconExternal, wgwidget.Ghost, nil)
+	popOutBtn.OnTapped = func() {
+		// Hand the live content to a window of its own; the scan keeps going.
+		poppedOut = true
+		sheet.Close()
+		w := fyne.CurrentApp().NewWindow(title)
+		w.Resize(fyne.NewSize(980, 660))
+		w.SetOnClosed(func() { v.stopped.Store(true) })
+		popOutBtn.Hide()
+		w.SetContent(wgwidget.WithLayer(w, container.New(
+			layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceXL),
+			container.NewBorder(nil,
+				container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0),
+					container.NewHBox(layout.NewSpacer(), exportBtn)),
+				nil, nil, content))))
+		v.win = w
+		w.Show()
+	}
+
+	sheet = wgwidget.ShowSheetFill(parent, title, wgwidget.SheetFull, content, popOutBtn, exportBtn)
+	sheet.OnClose = func() {
+		if !poppedOut {
+			v.stopped.Store(true)
+		}
+	}
 
 	v.countLabel = countLabel
 	v.updateCount()
@@ -158,7 +164,7 @@ func (v *ScanView) Show() {
 	start := func() {
 		direct, wide, err := v.resolveSelection(networkSelect.Text, allOption)
 		if err != nil {
-			helpers.ShowError(err, win)
+			helpers.ShowError(err, v.win)
 			return
 		}
 
@@ -176,7 +182,7 @@ func (v *ScanView) Show() {
 		progressNote.Text = v.lang.Tf(lang.Scan_progress_pct, 0)
 		progressNote.Refresh()
 
-		v.run(direct, wide, win, progress, progressNote, statusLabel, nil, func() {
+		v.run(direct, wide, v.win, progress, progressNote, statusLabel, nil, func() {
 			networkSelect.Enable()
 			rescanBtn.Enable()
 			stopBtn.Disable()
@@ -334,14 +340,14 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 
 			s, err := scanner.NewScanner(cidr, v.workers, timeout)
 			if err != nil {
-				helpers.ShowError(err, win)
+				helpers.ShowError(err, v.win)
 				continue
 			}
 			current.Store(s)
 			s.Run()
 
 			for res := range s.Results {
-				v.addResult(res, win, resultsContainer)
+				v.addResult(res, v.win, resultsContainer)
 				report()
 			}
 
@@ -460,82 +466,67 @@ func (v *ScanView) snapshot() ([]scanner.ScanResult, map[string]string) {
 
 // buildResultsTable creates the results table. Each row carries its own copy
 // and connect actions so a host can be acted on without leaving the scan.
-func (v *ScanView) buildResultsTable(win fyne.Window) *widget.Table {
-	table := widget.NewTableWithHeaders(
-		func() (int, int) {
-			v.resultsMu.Lock()
-			defer v.resultsMu.Unlock()
-			return len(v.sortedResults), len(scanColumns)
-		},
-		func() fyne.CanvasObject { return newScanCell(v.lang) },
-		func(id widget.TableCellID, obj fyne.CanvasObject) {
-			cell, ok := obj.(*scanCell)
-			if !ok {
-				return
-			}
+func (v *ScanView) buildResultsTable() *wgwidget.DataTable {
+	cols := []wgwidget.Column{
+		{Title: v.lang.T(lang.Scan_col_address), MinWidth: 150, Mono: true},
+		{Title: v.lang.T(lang.Scan_col_identity), MinWidth: 180, Weight: 1.3},
+		{Title: v.lang.T(lang.Scan_col_ports), MinWidth: 160, Weight: 1, Mono: true},
+	}
+	ipAt := func(r int) string {
+		v.resultsMu.Lock()
+		defer v.resultsMu.Unlock()
+		if r < len(v.sortedResults) {
+			return v.sortedResults[r].IP
+		}
+		return ""
+	}
 
-			v.resultsMu.Lock()
-			if id.Row >= len(v.sortedResults) {
-				v.resultsMu.Unlock()
-				cell.SetText("")
-				return
-			}
-			r := v.sortedResults[id.Row]
-			identity := v.identities[r.IP]
+	t := wgwidget.NewDataTable(cols, func() int {
+		v.resultsMu.Lock()
+		defer v.resultsMu.Unlock()
+		return len(v.sortedResults)
+	}, func(row, col int) wgwidget.Cell {
+		v.resultsMu.Lock()
+		if row >= len(v.sortedResults) {
 			v.resultsMu.Unlock()
+			return wgwidget.Cell{}
+		}
+		r := v.sortedResults[row]
+		identity := v.identities[r.IP]
+		v.resultsMu.Unlock()
 
-			switch id.Col {
-			case 0:
-				text := r.IP
-				if r.IP == v.serverIP {
-					text += "  " + v.lang.T(lang.Scan_this_host)
-				}
-				cell.SetText(text)
-			case 1:
-				cell.SetText(v.hostIdentity(r, identity))
-			case 2:
-				cell.SetText(v.portsText(r))
-			case 3:
-				ip := r.IP
-				cell.SetActions(
-					func() {
-						win.Clipboard().SetContent(ip)
-					},
-					func() { v.showSSHDialog(ip, win) },
-				)
+		switch col {
+		case 0:
+			text := r.IP
+			if r.IP == v.serverIP {
+				text += "  " + v.lang.T(lang.Scan_this_host)
 			}
-		},
-	)
-
-	table.CreateHeader = func() fyne.CanvasObject {
-		h := widget.NewLabel("")
-		h.TextStyle = fyne.TextStyle{Bold: true}
-		return h
-	}
-	table.UpdateHeader = func(id widget.TableCellID, obj fyne.CanvasObject) {
-		h, ok := obj.(*widget.Label)
-		if !ok {
-			return
+			return wgwidget.Cell{Text: text, Strong: true}
+		case 1:
+			return wgwidget.Cell{Text: v.hostIdentity(r, identity)}
 		}
-		if id.Col < 0 || id.Col >= len(scanColumns) {
-			h.SetText("")
-			return
+		return wgwidget.Cell{Text: v.portsText(r)}
+	})
+	t.OnCellTap = func(row, col int) {
+		if ip := ipAt(row); ip != "" && col == 0 {
+			v.win.Clipboard().SetContent(ip)
+			wgwidget.ShowToast(v.win, wgwidget.ToastSuccess, v.lang.T(lang.Common_copied))
 		}
-		h.SetText(strings.ToUpper(v.lang.T(scanColumns[id.Col].titleKey)))
 	}
-
-	table.ShowHeaderRow = true
-	table.ShowHeaderColumn = false
-	table.StickyColumnCount = 1
-
-	for i, c := range scanColumns {
-		table.SetColumnWidth(i, c.width)
+	t.Actions = []wgwidget.RowAction{
+		{Icon: wgtheme.IconCopy, Tooltip: v.lang.T(lang.Common_copy), OnTap: func(row int) {
+			if ip := ipAt(row); ip != "" {
+				v.win.Clipboard().SetContent(ip)
+				wgwidget.ShowToast(v.win, wgwidget.ToastSuccess, v.lang.T(lang.Common_copied))
+			}
+		}},
+		{Icon: wgtheme.IconTerminal, Tooltip: v.lang.T(lang.Ssh_connect_btn), OnTap: func(row int) {
+			if ip := ipAt(row); ip != "" {
+				v.showSSHDialog(ip, v.win)
+			}
+		}},
 	}
-	// Rows carry buttons, so they need a little more height than the peer
-	// table's plain text rows.
-	table.SetRowHeight(-1, 28)
-
-	return table
+	return t
 }
 
 // updateCount refreshes the "N hosts" counter above the table.
@@ -622,27 +613,23 @@ func (v *ScanView) showSSHDialog(ip string, parent fyne.Window) {
 	if sshPort == "" {
 		sshPort = "22"
 	}
-	d := dialog.NewForm(
-		v.lang.T(lang.Ssh_dialog_title),
-		v.lang.T(lang.Common_connect),
-		v.lang.T(lang.Common_cancel),
-		[]*widget.FormItem{
-			{Text: v.lang.T(lang.Ssh_dialog_label_user), Widget: userEntry},
-			{Text: v.lang.T(lang.Ssh_dialog_label_pass), Widget: passEntry},
-			{Text: v.lang.T(lang.Ssh_dialog_label_ssh), Widget: sshPortEntry},
-		},
-		func(confirmed bool) {
-			if !confirmed {
-				return
-			}
-			portInt, _ := strconv.Atoi(sshPort)
-			wgwidget.NewSSHTerminal(ip, userEntry.Text, passEntry.Text, portInt, v.lang).Show()
+	var s *wgwidget.Surface
+	connect := func() {
+		s.Close()
+		portInt, _ := strconv.Atoi(sshPort)
+		wgwidget.NewSSHTerminal(ip, userEntry.Text, passEntry.Text, portInt, v.lang).Show()
+	}
+	passEntry.OnSubmitted = func(string) { connect() }
 
-		},
-		parent,
+	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceLG),
+		wgwidget.Field(v.lang.T(lang.Ssh_dialog_label_user), userEntry, ""),
+		wgwidget.Field(v.lang.T(lang.Ssh_dialog_label_pass), passEntry, ""),
+		wgwidget.Field(v.lang.T(lang.Ssh_dialog_label_ssh), sshPortEntry, ""),
 	)
-	d.Resize(fyne.NewSize(400, 220))
-	d.Show()
+	cancel := wgwidget.NewButton(v.lang.T(lang.Common_cancel), nil, wgwidget.Secondary, func() { s.Close() })
+	ok := wgwidget.NewButton(v.lang.T(lang.Common_connect), wgtheme.IconTerminal, wgwidget.Primary, connect)
+	s = wgwidget.ShowModal(parent, v.lang.T(lang.Ssh_dialog_title)+" · "+ip, 400, body, cancel, ok)
+	parent.Canvas().Focus(userEntry)
 }
 
 // insertSorted inserts res into results maintaining numeric IP order,

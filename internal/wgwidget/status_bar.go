@@ -24,8 +24,7 @@ type StatusBar struct {
 	lang *lang.Language
 
 	background *canvas.Rectangle
-	accent     *canvas.Rectangle
-	icon       *widget.Icon
+	icon       *canvas.Image
 	message    *canvas.Text
 	chipBox    *fyne.Container
 	container  *fyne.Container
@@ -40,36 +39,27 @@ type StatusBar struct {
 func NewStatusBar(language *lang.Language) *StatusBar {
 	p := wgtheme.Current()
 
-	bg := canvas.NewRectangle(p.SurfaceRaised)
-	accent := canvas.NewRectangle(color.Transparent)
-	accent.SetMinSize(fyne.NewSize(2, 0))
+	bg := canvas.NewRectangle(p.Header)
+	icon := iconImage(wgtheme.IconInfo, p.TextDim, 14)
+	msg := newText(language.T(lang.Status_ready), wgtheme.TextSM, wgtheme.WeightMedium, p.TextSecondary)
 
-	icon := widget.NewIcon(wgtheme.IconInfo)
-	msg := canvas.NewText(language.T(lang.Status_ready), p.TextSecondary)
-	msg.TextSize = 12
-
-	chips := container.New(layout.NewCustomPaddedHBoxLayout(4))
+	chips := container.New(layout.NewCustomPaddedHBoxLayout(6))
 
 	s := &StatusBar{
 		lang:       language,
 		background: bg,
-		accent:     accent,
 		icon:       icon,
 		message:    msg,
 		chipBox:    chips,
 	}
 
-	left := container.New(layout.NewCustomPaddedHBoxLayout(6),
-		container.New(layout.NewGridWrapLayout(fyne.NewSize(14, 14)), icon),
-		msg,
-	)
+	left := container.New(layout.NewCustomPaddedHBoxLayout(7),
+		container.NewCenter(icon), container.NewCenter(msg))
 	body := container.NewBorder(nil, nil, left, chips)
 
 	s.container = container.NewStack(bg,
-		container.NewBorder(nil, nil, accent, nil,
-			container.New(layout.NewCustomPaddedLayout(4, 4, 8, 8), body),
-		),
-	)
+		container.NewBorder(Hairline(), nil, nil, nil,
+			container.New(layout.NewCustomPaddedLayout(5, 5, 14, 12), body)))
 
 	s.ExtendBaseWidget(s)
 	return s
@@ -108,7 +98,7 @@ func (s *StatusBar) SetWarning(msg string) {
 func (s *StatusBar) Reset() {
 	p := wgtheme.Current()
 	s.flashID++
-	s.set(s.lang.T(lang.Status_ready), wgtheme.IconInfo, p.TextSecondary, p.SurfaceRaised)
+	s.set(s.lang.T(lang.Status_ready), wgtheme.IconInfo, p.TextSecondary, p.Header)
 }
 
 // FlashDuration is how long a transient confirmation stays on the strip.
@@ -133,15 +123,13 @@ func (s *StatusBar) Flash(msg string, success bool) {
 	})
 }
 
-func (s *StatusBar) set(msg string, icon fyne.Resource, tone, bg color.NRGBA) {
-	s.icon.SetResource(icon)
+func (s *StatusBar) set(msg string, icon *wgtheme.Icon, tone, bg color.NRGBA) {
+	setIconColor(s.icon, icon, tone)
 	s.message.Text = msg
 	s.message.Color = tone
 	s.message.Refresh()
 	s.background.FillColor = bg
 	s.background.Refresh()
-	s.accent.FillColor = tone
-	s.accent.Refresh()
 	s.Refresh()
 }
 
