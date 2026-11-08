@@ -1084,6 +1084,10 @@ func (v *MainView) Open(what string) {
 		v.confirmDeleteTunnel(name)
 	case "busy":
 		v.busyDialog.Show(name, v.lang.T(lang.Status_activating))
+	case "ssh":
+		// Port 1 on loopback refuses at once: the window opens, nothing is
+		// contacted.
+		wgwidget.NewSSHTerminal("127.0.0.1", "demo", "", 1, v.lang).Show()
 	case "qr":
 		if cfg := v.configs[name]; cfg != nil && len(cfg.Peers) > 0 {
 			v.showPeerQR(name, cfg.Peers[0].PublicKey.String())

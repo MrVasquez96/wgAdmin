@@ -73,9 +73,9 @@ func NewSSHTerminal(host, username, password string, port int, language *lang.La
 func (t *SSHTerminal) Show() {
 	p := wgtheme.Current()
 
-	t.win = fyne.CurrentApp().NewWindow(t.lang.Tf(lang.Ssh_window_title, t.host))
-	t.win.Resize(fyne.NewSize(880, 560))
-	t.win.SetOnClosed(t.cleanup)
+	// A pooled window: closing it hides it for reuse (see SecondaryWindow for
+	// the Fyne bug this avoids), and cleanup ends the SSH session.
+	t.win = SecondaryWindow(t.lang.Tf(lang.Ssh_window_title, t.host), fyne.NewSize(880, 560), t.cleanup)
 
 	t.statusDot = canvas.NewCircle(p.Warning)
 	t.statusLabel = canvas.NewText(t.lang.Tf(lang.Ssh_status_connecting, t.host), p.TextSecondary)

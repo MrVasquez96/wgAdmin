@@ -49,6 +49,30 @@ type ScanView struct {
 	win        fyne.Window
 	table      *wgwidget.DataTable
 	countLabel *canvas.Text
+
+	// ui is the widget set currently on screen. "Open in window" builds a
+	// fresh set in the new window rather than moving the drawn one: widgets
+	// carry GPU textures tied to the window they were drawn in, and moving
+	// them across windows corrupted the main window's text. The running scan
+	// always updates whichever set is current, and the last progress and
+	// status are kept so a new set starts in step.
+	ui         *scanUI
+	running    bool
+	lastPct    float64
+	lastNote   string
+	lastStatus string
+	allOption  string
+	options    []string
+}
+
+// scanUI is one window's worth of scan controls.
+type scanUI struct {
+	progress      *widget.ProgressBar
+	progressNote  *canvas.Text
+	statusLabel   *canvas.Text
+	networkSelect *widget.SelectEntry
+	rescanBtn     *wgwidget.Button
+	stopBtn       *wgwidget.Button
 }
 
 // NewScanView creates a new scan view for the networks in plan (see PlanScan).
@@ -80,128 +104,172 @@ func (v *ScanView) Show(parent fyne.Window) {
 	v.win = parent
 	title := v.lang.Tf(lang.Scan_title, v.ifaceName)
 
-	progress := widget.NewProgressBar()
-	progress.TextFormatter = func() string { return "" } // the count carries the detail
-	progressNote := wgwidget.Value("0%")
-	statusLabel := wgwidget.DimValue("")
-	countLabel := wgwidget.Caption("")
-
-	v.table = v.buildResultsTable()
-
-	allOption := v.lang.Tf(lang.Scan_all_networks, len(v.plan.Direct)+len(v.plan.Wide))
-	options := []string{allOption}
-	options = append(options, v.plan.Direct...)
+	v.allOption = v.lang.Tf(lang.Scan_all_networks, len(v.plan.Direct)+len(v.plan.Wide))
+	v.options = append([]string{v.allOption}, v.plan.Direct...)
 	for _, w := range v.plan.Wide {
-		options = append(options, v.lang.Tf(lang.Scan_wide_option, w))
+		v.options = append(v.options, v.lang.Tf(lang.Scan_wide_option, w))
 	}
-
-	networkSelect := widget.NewSelectEntry(options)
-	networkSelect.SetText(allOption)
-
-	rescanBtn := wgwidget.NewButton(v.lang.T(lang.Scan_rescan), wgtheme.IconRefresh, wgwidget.Primary, nil)
-	stopBtn := wgwidget.NewButton(v.lang.T(lang.Scan_btn_stop), wgtheme.IconStop, wgwidget.Danger, func() {
-		v.stopped.Store(true)
-	})
-	exportBtn := wgwidget.NewButton(v.lang.T(lang.Scan_btn_export), wgtheme.IconDownload, wgwidget.Secondary, func() {
-		v.exportCSV(v.win)
-	})
-
-	controls := container.NewBorder(nil, nil, nil,
-		container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM), stopBtn, rescanBtn),
-		wgwidget.Field(v.lang.T(lang.Scan_label_network), networkSelect, ""),
-	)
-
-	progressRow := container.NewBorder(nil, nil,
-		container.NewCenter(countLabel),
-		container.NewCenter(progressNote),
-		container.NewCenter(progress),
-	)
-
-	headerRows := []fyne.CanvasObject{controls, progressRow, statusLabel}
-	if len(v.plan.Skipped) > 0 {
-		// Networks too large to scan are worth naming: silently ignoring
-		// 0.0.0.0/0 looks like the scanner simply missed them.
-		headerRows = append(headerRows, wgwidget.Banner(wgwidget.BannerInfo, v.lang.T(lang.Common_info),
-			v.lang.Tf(lang.Scan_skipped_networks, strings.Join(v.plan.Skipped, ", ")), nil))
-	}
-
-	header := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD), headerRows...)
-	content := container.NewBorder(
-		container.New(layout.NewCustomPaddedLayout(0, wgtheme.SpaceMD, 0, 0), header),
-		nil, nil, nil, v.table)
+	v.lastNote = v.lang.Tf(lang.Scan_progress_pct, 0)
 
 	var sheet *wgwidget.Surface
 	poppedOut := false
-	popOutBtn := wgwidget.NewButton(v.lang.T(lang.Scan_pop_out), wgtheme.IconExternal, wgwidget.Ghost, nil)
-	popOutBtn.OnTapped = func() {
-		// Hand the live content to a window of its own; the scan keeps going.
+	popOutBtn := wgwidget.NewButton(v.lang.T(lang.Scan_pop_out), wgtheme.IconExternal, wgwidget.Ghost, func() {
+		// The sheet's widgets stay behind; the new window gets its own,
+		// connected to the same running scan.
 		poppedOut = true
 		sheet.Close()
-		w := fyne.CurrentApp().NewWindow(title)
-		w.Resize(fyne.NewSize(980, 660))
-		w.SetOnClosed(func() { v.stopped.Store(true) })
-		popOutBtn.Hide()
+		w := wgwidget.SecondaryWindow(title, fyne.NewSize(980, 660), func() { v.stopped.Store(true) })
+		v.win = w
+		content := v.buildUI()
+		exportBtn := wgwidget.NewButton(v.lang.T(lang.Scan_btn_export), wgtheme.IconDownload, wgwidget.Secondary, func() {
+			v.exportCSV(v.win)
+		})
 		w.SetContent(wgwidget.WithLayer(w, container.New(
 			layout.NewCustomPaddedLayout(wgtheme.SpaceLG, wgtheme.SpaceLG, wgtheme.SpaceXL, wgtheme.SpaceXL),
 			container.NewBorder(nil,
 				container.New(layout.NewCustomPaddedLayout(wgtheme.SpaceMD, 0, 0, 0),
 					container.NewHBox(layout.NewSpacer(), exportBtn)),
 				nil, nil, content))))
-		v.win = w
 		w.Show()
-	}
+	})
+	exportBtn := wgwidget.NewButton(v.lang.T(lang.Scan_btn_export), wgtheme.IconDownload, wgwidget.Secondary, func() {
+		v.exportCSV(v.win)
+	})
 
-	sheet = wgwidget.ShowSheetFill(parent, title, wgwidget.SheetFull, content, popOutBtn, exportBtn)
+	sheet = wgwidget.ShowSheetFill(parent, title, wgwidget.SheetFull, v.buildUI(), popOutBtn, exportBtn)
 	sheet.OnClose = func() {
 		if !poppedOut {
 			v.stopped.Store(true)
 		}
 	}
 
-	v.countLabel = countLabel
-	v.updateCount()
+	v.start()
+}
 
-	start := func() {
-		direct, wide, err := v.resolveSelection(networkSelect.Text, allOption)
-		if err != nil {
-			helpers.ShowError(err, v.win)
-			return
-		}
-
-		v.resultsMu.Lock()
-		v.sortedResults = nil
-		v.identities = make(map[string]string)
-		v.resultsMu.Unlock()
-
-		networkSelect.Disable()
-		rescanBtn.Disable()
-		stopBtn.Enable()
-		v.table.Refresh()
-		v.updateCount()
-		progress.SetValue(0)
-		progressNote.Text = v.lang.Tf(lang.Scan_progress_pct, 0)
-		progressNote.Refresh()
-
-		v.run(direct, wide, v.win, progress, progressNote, statusLabel, nil, func() {
-			networkSelect.Enable()
-			rescanBtn.Enable()
-			stopBtn.Disable()
-		})
+// buildUI creates a fresh set of scan controls showing the current state and
+// makes it the set the scan updates.
+func (v *ScanView) buildUI() fyne.CanvasObject {
+	ui := &scanUI{
+		progress:     widget.NewProgressBar(),
+		progressNote: wgwidget.Value(v.lastNote),
+		statusLabel:  wgwidget.DimValue(v.lastStatus),
 	}
+	ui.progress.TextFormatter = func() string { return "" } // the count carries the detail
+	ui.progress.SetValue(v.lastPct)
+	countLabel := wgwidget.Caption("")
 
+	v.table = v.buildResultsTable()
+	v.countLabel = countLabel
+
+	ui.networkSelect = widget.NewSelectEntry(v.options)
+	ui.networkSelect.SetText(v.allOption)
+	ui.rescanBtn = wgwidget.NewButton(v.lang.T(lang.Scan_rescan), wgtheme.IconRefresh, wgwidget.Primary, v.start)
+	ui.stopBtn = wgwidget.NewButton(v.lang.T(lang.Scan_btn_stop), wgtheme.IconStop, wgwidget.Danger, func() {
+		v.stopped.Store(true)
+	})
 	// SelectEntry fires OnChanged on every keystroke, so only the dropdown
 	// entries auto-start; typed CIDRs are launched with the Rescan button.
-	networkSelect.OnChanged = func(text string) {
-		for _, opt := range options {
+	ui.networkSelect.OnChanged = func(text string) {
+		if v.running {
+			return
+		}
+		for _, opt := range v.options {
 			if text == opt {
-				start()
+				v.start()
 				return
 			}
 		}
 	}
-	rescanBtn.OnTapped = start
 
-	start()
+	controls := container.NewBorder(nil, nil, nil,
+		container.New(layout.NewCustomPaddedHBoxLayout(wgtheme.SpaceSM), ui.stopBtn, ui.rescanBtn),
+		wgwidget.Field(v.lang.T(lang.Scan_label_network), ui.networkSelect, ""),
+	)
+	progressRow := container.NewBorder(nil, nil,
+		container.NewCenter(countLabel),
+		container.NewCenter(ui.progressNote),
+		container.NewCenter(ui.progress),
+	)
+
+	headerRows := []fyne.CanvasObject{controls, progressRow, ui.statusLabel}
+	if len(v.plan.Skipped) > 0 {
+		// Networks too large to scan are worth naming: silently ignoring
+		// 0.0.0.0/0 looks like the scanner simply missed them.
+		headerRows = append(headerRows, wgwidget.Banner(wgwidget.BannerInfo, v.lang.T(lang.Common_info),
+			v.lang.Tf(lang.Scan_skipped_networks, strings.Join(v.plan.Skipped, ", ")), nil))
+	}
+	header := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD), headerRows...)
+
+	v.ui = ui
+	v.syncRunning()
+	v.updateCount()
+
+	return container.NewBorder(
+		container.New(layout.NewCustomPaddedLayout(0, wgtheme.SpaceMD, 0, 0), header),
+		nil, nil, nil, v.table)
+}
+
+// syncRunning enables the controls that make sense for the current state.
+func (v *ScanView) syncRunning() {
+	if v.ui == nil {
+		return
+	}
+	if v.running {
+		v.ui.networkSelect.Disable()
+		v.ui.rescanBtn.Disable()
+		v.ui.stopBtn.Enable()
+	} else {
+		v.ui.networkSelect.Enable()
+		v.ui.rescanBtn.Enable()
+		v.ui.stopBtn.Disable()
+	}
+}
+
+// start scans whatever the network selector currently names.
+func (v *ScanView) start() {
+	if v.ui == nil || v.running {
+		return
+	}
+	direct, wide, err := v.resolveSelection(v.ui.networkSelect.Text, v.allOption)
+	if err != nil {
+		helpers.ShowError(err, v.win)
+		return
+	}
+
+	v.resultsMu.Lock()
+	v.sortedResults = nil
+	v.identities = make(map[string]string)
+	v.resultsMu.Unlock()
+
+	v.running = true
+	v.syncRunning()
+	v.table.Refresh()
+	v.updateCount()
+	v.setProgress(0, v.lang.Tf(lang.Scan_progress_pct, 0))
+
+	v.run(direct, wide, func() {
+		v.running = false
+		v.syncRunning()
+	})
+}
+
+// setProgress records and shows the progress; call on the UI thread.
+func (v *ScanView) setProgress(pct float64, note string) {
+	v.lastPct, v.lastNote = pct, note
+	if v.ui != nil {
+		v.ui.progress.SetValue(pct)
+		v.ui.progressNote.Text = note
+		v.ui.progressNote.Refresh()
+	}
+}
+
+// setStatus records and shows the status line; call on the UI thread.
+func (v *ScanView) setStatus(text string) {
+	v.lastStatus = text
+	if v.ui != nil {
+		v.ui.statusLabel.Text = text
+		v.ui.statusLabel.Refresh()
+	}
 }
 
 // resolveSelection turns the selector's text into the networks to scan. It
@@ -242,14 +310,9 @@ func (v *ScanView) resolveSelection(text, allOption string) (direct, wide []stri
 
 // run discovers the active subnets of the wide routes, then scans those
 // together with the direct networks. done runs on the UI thread when finished.
-func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.ProgressBar, progressNote *canvas.Text, statusLabel *canvas.Text, resultsContainer *fyne.Container, done func()) {
+func (v *ScanView) run(direct, wide []string, done func()) {
 	v.stopped.Store(false)
 	timeout := time.Duration(v.timeoutSecs) * time.Second
-
-	setText := func(t *canvas.Text, s string) {
-		t.Text = s
-		t.Refresh()
-	}
 
 	setProgress := func(scanned, total uint32) {
 		if total == 0 {
@@ -259,20 +322,16 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 		if pct > 1 {
 			pct = 1
 		}
-		fyne.Do(func() {
-			progress.SetValue(pct)
-			setText(progressNote, v.lang.Tf(lang.Scan_progress_pct, int(pct*100)))
-		})
+		fyne.Do(func() { v.setProgress(pct, v.lang.Tf(lang.Scan_progress_pct, int(pct*100))) })
 	}
 	setStatus := func(text string) {
-		fyne.Do(func() { setText(statusLabel, text) })
+		fyne.Do(func() { v.setStatus(text) })
 	}
 
 	finish := func() {
 		fyne.Do(func() {
-			progress.SetValue(1)
-			setText(progressNote, v.lang.T(lang.Scan_progress_100))
-			setText(statusLabel, "")
+			v.setProgress(1, v.lang.T(lang.Scan_progress_100))
+			v.setStatus("")
 			done()
 		})
 	}
@@ -296,8 +355,7 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 		if len(targets) == 0 {
 			setStatus(v.lang.T(lang.Scan_no_active_subnets))
 			fyne.Do(func() {
-				progress.SetValue(1)
-				setText(progressNote, v.lang.T(lang.Scan_progress_100))
+				v.setProgress(1, v.lang.T(lang.Scan_progress_100))
 				done()
 			})
 			return
@@ -347,7 +405,7 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 			s.Run()
 
 			for res := range s.Results {
-				v.addResult(res, v.win, resultsContainer)
+				v.addResult(res)
 				report()
 			}
 
@@ -362,7 +420,7 @@ func (v *ScanView) run(direct, wide []string, win fyne.Window, progress *widget.
 
 // addResult inserts a result in IP order, repaints the table and asks the host
 // what it is in the background.
-func (v *ScanView) addResult(res scanner.ScanResult, win fyne.Window, _ *fyne.Container) {
+func (v *ScanView) addResult(res scanner.ScanResult) {
 	v.resultsMu.Lock()
 	v.sortedResults = insertSorted(v.sortedResults, res, v.serverIP)
 	v.resultsMu.Unlock()

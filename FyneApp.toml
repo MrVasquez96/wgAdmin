@@ -2,5 +2,5 @@
 Icon = "icon.png"
 Name = "wgAdmin"
 ID = "com.wireguard.manager"
-Version = "0.4.0"
-Build = 119
+Version = "0.4.1"
+Build = 122
