@@ -28,6 +28,7 @@ var englishTranslations = Translations{
 	Common_never:    "Never",
 	Common_view:     "View",
 	Common_add:      "Add",
+	Common_ok:       "OK",
 	Common_done:     "Done",
 
 	// ===== Main view =====
@@ -100,10 +101,11 @@ var englishTranslations = Translations{
 	Detail_col_handshake:        "Handshake",
 	Detail_col_rx:               "RX",
 	Detail_col_tx:               "TX",
+	Detail_col_qr:               "QR",
 	Detail_col_state:            "",
 	Detail_unnamed_peer:         "unnamed",
 	Detail_port_auto:            "auto",
-	Detail_peers_hint:           "Select a peer to show its client config and QR code.",
+	Detail_peers_hint:           "Click a value to copy it, or the QR icon to show a peer's client config.",
 
 	// ===== Raw config view =====
 	Config_title:           "Config: %s",
@@ -431,6 +433,7 @@ var englishTranslations = Translations{
 	Status_refreshing:           "Reading interfaces…",
 	Status_refresh_title:        "Refresh",
 	Status_copied_pubkey:        "Public key copied",
+	Status_copied_field:         "Copied %s: %s",
 	Status_activating:           "Bringing up…",
 	Status_deactivating:         "Bringing down…",
 	Status_deleting:             "Deleting %s…",

@@ -128,9 +128,13 @@ func ShowPeerQR(parent fyne.Window, req qrRequest, l *lang.Language) {
 	endpointLine := wgwidget.DimValue(l.Tf(lang.Qr_endpoint, endpoint))
 	endpointLine.TextSize = 11
 
+	// The hint is added bare, not centred: a centred child is shrunk to its
+	// MinSize, and a word-wrapping label's minimum width is a single glyph,
+	// which stacked the text one letter per line. Full width plus centre
+	// alignment wraps it by words instead.
 	body := container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceMD),
 		container.NewCenter(qr),
-		container.NewCenter(hint),
+		hint,
 		container.NewCenter(endpointLine),
 		container.NewCenter(warning),
 		container.NewCenter(copyBtn),

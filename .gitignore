@@ -1,5 +1,16 @@
-
-assets
+# Assets: only what the binary embeds (see assets/assets.go) is tracked. The
+# rest of the Inter release stays local as reference.
+assets/*
+!assets/assets.go
+!assets/fonts/
+assets/fonts/*
+!assets/fonts/Inter-Regular.ttf
+!assets/fonts/Inter-Italic.ttf
+!assets/fonts/Inter-Medium.ttf
+!assets/fonts/Inter-SemiBold.ttf
+!assets/fonts/Inter-Bold.ttf
+!assets/fonts/Inter-BoldItalic.ttf
+!assets/fonts/JetBrainsMono-Regular.ttf
 # Build files and directories
 fyne-cross/*
 wgAdmin/*

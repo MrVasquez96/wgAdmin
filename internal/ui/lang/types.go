@@ -41,6 +41,7 @@ const (
 	Common_never    = common + "never"
 	Common_view     = common + "view"
 	Common_add      = common + "add"
+	Common_ok       = common + "ok"
 	Common_done     = common + "done"
 
 	// ===== Main view =====
@@ -118,6 +119,7 @@ const (
 	Detail_col_handshake        = detail_ + "col_handshake"
 	Detail_col_rx               = detail_ + "col_rx"
 	Detail_col_tx               = detail_ + "col_tx"
+	Detail_col_qr               = detail_ + "col_qr"
 	Detail_col_state            = detail_ + "col_state"
 	Detail_unnamed_peer         = detail_ + "unnamed_peer"
 	Detail_port_auto            = detail_ + "port_auto"
@@ -444,6 +446,7 @@ const (
 	Status_refreshing           = status_ + "refreshing"
 	Status_refresh_title        = status_ + "refresh_title"
 	Status_copied_pubkey        = status_ + "copied_pubkey"
+	Status_copied_field         = status_ + "copied_field"
 	Status_activating           = status_ + "activating"
 	Status_deactivating         = status_ + "deactivating"
 	Status_deleting             = status_ + "deleting"

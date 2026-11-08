@@ -2,6 +2,7 @@ package theme
 
 import (
 	"image/color"
+	"time"
 
 	"wgAdmin/internal/settings"
 
@@ -19,12 +20,64 @@ const (
 	SpaceXL = float32(20)
 )
 
-// Corner radii. Panels are slightly rounded, chips are pill-like.
+// Corner radii. The scale is what new components use; the role names are the
+// original API and now resolve onto the scale.
 const (
-	RadiusChip   = float32(3)
-	RadiusPanel  = float32(6)
-	RadiusDialog = float32(10)
+	RadiusSM = float32(4)
+	RadiusMD = float32(8)
+	RadiusLG = float32(12)
+	RadiusXL = float32(16)
+
+	RadiusChip   = RadiusSM
+	RadiusPanel  = RadiusMD
+	RadiusDialog = RadiusLG
 )
+
+// Type scale, before the user's font-size offset (see TextSize).
+const (
+	TextXS      = float32(11)
+	TextSM      = float32(12)
+	TextMD      = float32(13)
+	TextLG      = float32(15)
+	TextXL      = float32(18)
+	TextDisplay = float32(24)
+)
+
+// Control heights for buttons, inputs and segmented controls, before the
+// density adjustment (see ControlHeight).
+const (
+	ControlSM = float32(28)
+	ControlMD = float32(34)
+	ControlLG = float32(40)
+)
+
+// Motion durations. Short enough that nothing ever feels like it is waiting
+// on an animation; long enough that state changes read as movement.
+const (
+	MotionFast = 120 * time.Millisecond
+	MotionBase = 180 * time.Millisecond
+	MotionSlow = 260 * time.Millisecond
+)
+
+// EaseOut decelerates into the final value, which is what UI motion should do:
+// respond immediately, settle gently.
+func EaseOut(t float32) float32 { return 1 - (1-t)*(1-t)*(1-t) }
+
+// TextSize applies the user's font-size preference to a type-scale value.
+func TextSize(base float32) float32 {
+	if activeTheme == nil {
+		return base
+	}
+	return base + activeTheme.fontSizeOffset()
+}
+
+// ControlHeight applies the density preference to a control height.
+func ControlHeight(base float32) float32 {
+	if activeTheme != nil && activeTheme.compact() {
+		return base - 4
+	}
+	return base
+}
 
 // Palette is the full set of resolved colours for one theme variant. Views
 // should read colours from here instead of reaching for theme.XxxColor(), so
@@ -214,6 +267,55 @@ func (p Palette) InfoTint() color.NRGBA    { return p.Tint(p.Info, 0.16) }
 
 // AccentTint is the selected-row background in the sidebar and tables.
 func (p Palette) AccentTint() color.NRGBA { return p.Tint(p.Accent, 0.18) }
+
+// IsDark reports whether this palette is the dark variant.
+func (p Palette) IsDark() bool { return p.Variant != theme.VariantLight }
+
+// OnAccent is the text and icon colour on an accent-filled surface.
+func (p Palette) OnAccent() color.NRGBA { return onColor(p.Accent) }
+
+// OnColor is the legible text colour on top of any filled colour.
+func (p Palette) OnColor(c color.NRGBA) color.NRGBA { return onColor(c) }
+
+// AccentSoft is a faint accent wash for hovered or highlighted surfaces.
+func (p Palette) AccentSoft() color.NRGBA { return p.Tint(p.Accent, 0.10) }
+
+// Ring is the keyboard focus ring colour.
+func (p Palette) Ring() color.NRGBA { return Alpha(p.Accent, 150) }
+
+// HoverOverlay and PressOverlay are translucent layers drawn over any surface,
+// so hover and press work the same on every colour without per-colour tokens.
+func (p Palette) HoverOverlay() color.NRGBA {
+	if p.IsDark() {
+		return color.NRGBA{R: 255, G: 255, B: 255, A: 14}
+	}
+	return color.NRGBA{A: 12}
+}
+
+func (p Palette) PressOverlay() color.NRGBA {
+	if p.IsDark() {
+		return color.NRGBA{R: 255, G: 255, B: 255, A: 26}
+	}
+	return color.NRGBA{A: 24}
+}
+
+// Shadow is the colour of one layer of an elevation shadow. Dark themes need a
+// much stronger shadow to register against a near-black background.
+func (p Palette) Shadow(alpha uint8) color.NRGBA {
+	if p.IsDark() {
+		return color.NRGBA{A: alpha}
+	}
+	return color.NRGBA{R: 15, G: 23, B: 42, A: alpha / 2}
+}
+
+// Lift is a surface one step brighter (dark) or darker (light) than c, used
+// for hover states of filled controls.
+func (p Palette) Lift(c color.NRGBA, t float32) color.NRGBA {
+	if p.IsDark() {
+		return Mix(c, color.NRGBA{R: 255, G: 255, B: 255, A: c.A}, t)
+	}
+	return Mix(c, color.NRGBA{A: c.A}, t)
+}
 
 // Mix linearly interpolates between two colours. t=0 returns a, t=1 returns b.
 func Mix(a, b color.NRGBA, t float32) color.NRGBA {

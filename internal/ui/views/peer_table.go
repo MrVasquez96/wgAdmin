@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"wgAdmin/internal/ui/lang"
@@ -34,6 +35,18 @@ type peerRow struct {
 	live       bool
 }
 
+// Column indexes into peerColumns.
+const (
+	colState = iota
+	colQR
+	colPeer
+	colAllowedIPs
+	colEndpoint
+	colHandshake
+	colRX
+	colTX
+)
+
 // peerColumns defines the table layout. Widths are fixed so values line up
 // down each column, and the total is kept under the width of a detail pane at
 // the default window size so the table does not need horizontal scrolling to
@@ -43,6 +56,9 @@ var peerColumns = []struct {
 	width    float32
 }{
 	{lang.Detail_col_state, 24},
+	// The QR action sits next to the state dot, inside the sticky columns, so
+	// it stays in reach when the table is scrolled sideways.
+	{lang.Detail_col_qr, 40},
 	{lang.Detail_col_peer, 112},
 	{lang.Detail_col_allowed_ips, 140},
 	{lang.Detail_col_endpoint, 132},
@@ -145,9 +161,37 @@ func newPeerCell() *peerCell {
 	}
 }
 
-// newPeerTable builds the live peer table. onSelect is called with the row's
-// public key when a row is chosen.
-func newPeerTable(rows *[]peerRow, l *lang.Language, onSelect func(publicKey string)) *widget.Table {
+// qrCellIcon is the QR action glyph, in the accent colour so it reads as a
+// control rather than as data.
+var qrCellIcon = theme.NewPrimaryThemedResource(wgtheme.IconQR)
+
+// cellValue is the full text behind a data column, which the cell itself may
+// show truncated. The peer column yields the public key: the displayed name is
+// either a comment or a key prefix, and neither is what gets pasted elsewhere.
+func (r peerRow) cellValue(col int) string {
+	switch col {
+	case colPeer:
+		return r.publicKey
+	case colAllowedIPs:
+		return r.allowedIPs
+	case colEndpoint:
+		return r.endpoint
+	case colHandshake:
+		return r.handshake
+	case colRX:
+		return r.rx
+	case colTX:
+		return r.tx
+	}
+	return ""
+}
+
+// newPeerTable builds the live peer table. Clicking the QR cell calls onQR with
+// the row's public key; clicking a data cell calls onCopy with the column title
+// and the cell's full value. Deliberately, a plain click on data never opens a
+// dialog — those cells look like text, so they behave like text.
+func newPeerTable(rows *[]peerRow, l *lang.Language,
+	onQR func(publicKey string), onCopy func(column, value string)) *widget.Table {
 	table := widget.NewTableWithHeaders(
 		func() (int, int) { return len(*rows), len(peerColumns) },
 		func() fyne.CanvasObject { return newPeerCell().obj },
@@ -164,32 +208,23 @@ func newPeerTable(rows *[]peerRow, l *lang.Language, onSelect func(publicKey str
 
 			r := (*rows)[id.Row]
 			dotBox.Objects = nil
+			label.TextStyle = fyne.TextStyle{Monospace: true}
 
 			switch id.Col {
-			case 0:
+			case colState:
 				// State is a dot, not text — it needs no width and reads fast.
 				label.SetText("")
 				if r.live {
 					dotBox.Objects = []fyne.CanvasObject{wgwidget.PeerStateDot(r.state)}
 				}
-			case 1:
-				label.SetText(r.name)
+			case colQR:
+				label.SetText("")
+				dotBox.Objects = []fyne.CanvasObject{widget.NewIcon(qrCellIcon)}
+			case colPeer:
 				label.TextStyle = fyne.TextStyle{Monospace: true, Bold: true}
-			case 2:
-				label.SetText(r.allowedIPs)
-				label.TextStyle = fyne.TextStyle{Monospace: true}
-			case 3:
-				label.SetText(r.endpoint)
-				label.TextStyle = fyne.TextStyle{Monospace: true}
-			case 4:
-				label.SetText(r.handshake)
-				label.TextStyle = fyne.TextStyle{Monospace: true}
-			case 5:
-				label.SetText(r.rx)
-				label.TextStyle = fyne.TextStyle{Monospace: true}
-			case 6:
-				label.SetText(r.tx)
-				label.TextStyle = fyne.TextStyle{Monospace: true}
+				label.SetText(r.name)
+			default:
+				label.SetText(r.cellValue(id.Col))
 			}
 
 			dotBox.Refresh()
@@ -217,18 +252,26 @@ func newPeerTable(rows *[]peerRow, l *lang.Language, onSelect func(publicKey str
 
 	table.ShowHeaderRow = true
 	table.ShowHeaderColumn = false
-	table.StickyColumnCount = 1
+	table.StickyColumnCount = colQR + 1
 
 	for i, c := range peerColumns {
 		table.SetColumnWidth(i, c.width)
 	}
 
-	if onSelect != nil {
-		table.OnSelected = func(id widget.TableCellID) {
-			if id.Row >= 0 && id.Row < len(*rows) {
-				onSelect((*rows)[id.Row].publicKey)
+	table.OnSelected = func(id widget.TableCellID) {
+		defer table.UnselectAll()
+		if id.Row < 0 || id.Row >= len(*rows) {
+			return
+		}
+		r := (*rows)[id.Row]
+		switch id.Col {
+		case colState:
+		case colQR:
+			onQR(r.publicKey)
+		default:
+			if v := r.cellValue(id.Col); v != "" && v != wgstat.Dash {
+				onCopy(l.T(peerColumns[id.Col].titleKey), v)
 			}
-			table.UnselectAll()
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"net"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -558,19 +559,20 @@ func (v *ScanView) exportCSV(win fyne.Window) {
 		return
 	}
 
-	save := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
+	helpers.SaveFile(win, helpers.FileOpts{
+		Title:       v.lang.T(lang.Scan_btn_export),
+		FilterLabel: "CSV",
+		Extensions:  []string{".csv"},
+		FileName:    v.ifaceName + "-scan.csv",
+	}, func(path string) {
+		f, err := os.Create(path)
 		if err != nil {
-			helpers.ShowError(err, win)
+			helpers.ShowError(errors.New(v.lang.Tf(lang.Scan_export_error, err.Error())), win)
 			return
 		}
-		if w == nil {
-			return
-		}
-		defer w.Close()
+		defer f.Close()
 
-		cw := csv.NewWriter(w)
-		defer cw.Flush()
-
+		cw := csv.NewWriter(f)
 		_ = cw.Write([]string{"address", "identity", "ports"})
 		for _, r := range results {
 			ports := make([]string, 0, len(r.PortsOpen))
@@ -593,12 +595,8 @@ func (v *ScanView) exportCSV(win fyne.Window) {
 		}
 
 		helpers.ShowInformation(v.lang.T(lang.Scan_btn_export),
-			v.lang.Tf(lang.Scan_export_success, w.URI().Path()), win)
-	}, win)
-
-	save.SetFileName(v.ifaceName + "-scan.csv")
-	save.Resize(fyne.NewSize(820, 600))
-	save.Show()
+			v.lang.Tf(lang.Scan_export_success, path), win)
+	})
 }
 
 func (v *ScanView) showSSHDialog(ip string, parent fyne.Window) {

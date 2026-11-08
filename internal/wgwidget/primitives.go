@@ -122,11 +122,17 @@ func KeyValue(label, value string, labelWidth float32) fyne.CanvasObject {
 	return container.NewBorder(nil, nil, labelBox, nil, Value(value))
 }
 
-// KeyValueCopy is KeyValue with a copy button on the right.
+// KeyValueCopy is KeyValue with a copy button on the right. A nil onCopy leaves
+// an empty slot the size of the button, so mixed rows still line up.
 func KeyValueCopy(label, value string, labelWidth float32, onCopy func()) fyne.CanvasObject {
 	btn := widget.NewButtonWithIcon("", wgtheme.IconCopy, onCopy)
 	btn.Importance = widget.LowImportance
 	row := KeyValue(label, value, labelWidth)
+	if onCopy == nil {
+		slot := canvas.NewRectangle(color.Transparent)
+		slot.SetMinSize(btn.MinSize())
+		return container.NewBorder(nil, nil, nil, slot, row)
+	}
 	return container.NewBorder(nil, nil, nil, btn, row)
 }
 

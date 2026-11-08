@@ -3,6 +3,7 @@ package lang
 var norwegianTranslations = Translations{
 	// ===== Common actions and labels =====
 	Common_save:     "Lagre",
+	Common_ok:       "OK",
 	Common_connect:  "Koble til",
 	Common_cancel:   "Avbryt",
 	Common_delete:   "Slett",
@@ -251,8 +252,8 @@ var norwegianTranslations = Translations{
 	Ssh_dialog_title:            "SSH-tilkobling",
 	Ssh_dialog_label_user:       "Brukernavn",
 	Ssh_dialog_label_pass:       "Passord",
-	Ssh_dialog_label_ssh:		 "Port (valgfri)",
-	Ssh_dialog_placeholder_ssh:	 "f.eks. 2222, 2223",
+	Ssh_dialog_label_ssh:        "Port (valgfri)",
+	Ssh_dialog_placeholder_ssh:  "f.eks. 2222, 2223",
 	Ssh_dialog_placeholder_user: "f.eks. root, admin",
 	Ssh_dialog_placeholder_pass: "SSH-passord",
 	Ssh_window_title:            "SSH: %s",
@@ -269,6 +270,8 @@ var norwegianTranslations = Translations{
 	Status_refreshing:           "Oppdaterer grensesnitt...",
 	Status_refresh_title:        "Oppdater",
 	Status_copied_pubkey:        "Offentlig nøkkel kopiert til utklippstavle",
+	Status_copied_field:         "Kopierte %s: %s",
+	Detail_peers_hint:           "Klikk en verdi for å kopiere den, eller QR-ikonet for å vise klientkonfigurasjonen.",
 	Status_activating:           "Aktiverer...",
 	Status_deactivating:         "Deaktiverer...",
 	Status_deleting:             "Sletter %s...",

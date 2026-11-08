@@ -316,13 +316,25 @@ func (d *tunnelDetail) interfaceGrid(iface config.Interface, cfg *config.Config,
 		pubKey = wgstat.Dash
 	}
 
+	// Every row gets a copy action. Rows with nothing worth copying (a dash,
+	// or the "auto" placeholder standing in for an unset port) keep an empty
+	// slot of the same size so the column of values stays evenly spaced.
+	field := func(labelKey, value string) fyne.CanvasObject {
+		label := d.lang.T(labelKey)
+		var onCopy func()
+		if value != wgstat.Dash && value != d.lang.T(lang.Detail_port_auto) {
+			onCopy = func() { d.copyField(label, value) }
+		}
+		return wgwidget.KeyValueCopy(label, value, labelWidth, onCopy)
+	}
+
 	rows := []fyne.CanvasObject{
-		wgwidget.KeyValue(d.lang.T(lang.Detail_label_address), address, labelWidth),
-		wgwidget.KeyValue(d.lang.T(lang.Detail_label_endpoint), endpoint, labelWidth),
-		wgwidget.KeyValue(d.lang.T(lang.Detail_label_port), port, labelWidth),
-		wgwidget.KeyValue(d.lang.T(lang.Detail_label_mtu), mtu, labelWidth),
-		wgwidget.KeyValue(d.lang.T(lang.Detail_label_dns), dns, labelWidth),
-		wgwidget.KeyValue(d.lang.T(lang.Detail_label_table), table, labelWidth),
+		field(lang.Detail_label_address, address),
+		field(lang.Detail_label_endpoint, endpoint),
+		field(lang.Detail_label_port, port),
+		field(lang.Detail_label_mtu, mtu),
+		field(lang.Detail_label_dns, dns),
+		field(lang.Detail_label_table, table),
 	}
 
 	if pubKey != wgstat.Dash {
@@ -342,10 +354,16 @@ func (d *tunnelDetail) interfaceGrid(iface config.Interface, cfg *config.Config,
 		layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceSM), rows...), nil)
 }
 
+// copyField copies a value and names it in the status strip, which doubles as
+// the way to read a value the layout had to truncate.
+func (d *tunnelDetail) copyField(label, value string) {
+	d.actions.OnCopy(d.lang.Tf(lang.Status_copied_field, label, value), value)
+}
+
 // peers renders the live peer table, or an explanation when there are none.
 //
-// Selecting a row offers that peer's client config, so a QR code can be shown
-// whenever it is needed rather than only in the session that created the peer.
+// Each row carries a QR action, so a client config can be shown whenever it is
+// needed rather than only in the session that created the peer.
 func (d *tunnelDetail) peers(iface config.Interface, cfg *config.Config, dev wgstat.Device, live bool) fyne.CanvasObject {
 	var configured []config.PeerConfig
 	if cfg != nil {
@@ -358,9 +376,10 @@ func (d *tunnelDetail) peers(iface config.Interface, cfg *config.Config, dev wgs
 
 	d.peerRows = buildPeerRows(configured, dev, live, d.lang)
 
-	table := newPeerTable(&d.peerRows, d.lang, func(publicKey string) {
-		d.actions.OnPeerQR(iface.Name, publicKey)
-	})
+	table := newPeerTable(&d.peerRows, d.lang,
+		func(publicKey string) { d.actions.OnPeerQR(iface.Name, publicKey) },
+		func(column, value string) { d.copyField(column, value) },
+	)
 
 	return container.New(layout.NewCustomPaddedVBoxLayout(wgtheme.SpaceXS),
 		fixedHeight(table, peerTableHeight(len(d.peerRows))),

@@ -20,7 +20,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -85,6 +84,10 @@ func NewMainView(window fyne.Window, ctrl *wg.WG, cfg *settings.AppSettings, lan
 		tracker:     wgstat.NewTracker(),
 	}
 	v.detail = newTunnelDetail(language, v.detailActions())
+
+	helpers.SetLabels(language.T(lang.Common_ok), language.T(lang.Common_cancel),
+		language.T(lang.Common_yes), language.T(lang.Common_no))
+	helpers.SetErrorTitle(language.T(lang.Common_error))
 	return v
 }
 
@@ -138,7 +141,8 @@ func (v *MainView) Build(meta fyne.AppMetadata) fyne.CanvasObject {
 	v.registerShortcuts()
 	v.updateStatusChips()
 
-	return content
+	// The floating layer is where tooltips and toasts appear.
+	return wgwidget.WithLayer(v.window, content)
 }
 
 // buildToolbar is the top strip: brand, filter, and the global actions.
@@ -409,17 +413,11 @@ func (v *MainView) updateStatusChips() {
 
 // importConfig opens a .conf and copies it into the config directory.
 func (v *MainView) importConfig() {
-	fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		if err != nil {
-			helpers.ShowError(err, v.window)
-			return
-		}
-		if reader == nil {
-			return
-		}
-		defer reader.Close()
-
-		filePath := reader.URI().Path()
+	helpers.OpenFile(v.window, helpers.FileOpts{
+		Title:       v.lang.T(lang.Main_import),
+		FilterLabel: "WireGuard",
+		Extensions:  []string{".conf"},
+	}, func(filePath string) {
 		if filepath.Ext(filePath) != ".conf" {
 			helpers.ShowError(errors.New(v.lang.T(lang.Main_import_error_ext)), v.window)
 			return
@@ -437,9 +435,10 @@ func (v *MainView) importConfig() {
 		// The file name is the interface name — that is how wg-quick reads a
 		// config directory. The config's own Name field is a display string
 		// ("[wg0] Public key: …") and using it produced files named after it.
-		name := strings.TrimSuffix(filepath.Base(reader.URI().Name()), ".conf")
+		base := filepath.Base(filePath)
+		name := strings.TrimSuffix(base, ".conf")
 
-		if _, statErr := os.Stat(filepath.Join(v.settings.WGConfigPath, reader.URI().Name())); statErr == nil {
+		if _, statErr := os.Stat(filepath.Join(v.settings.WGConfigPath, base)); statErr == nil {
 			helpers.ShowConfirm(v.lang.T(lang.Main_import_overwrite_title),
 				v.lang.T(lang.Main_import_overwrite_msg), func(b bool) {
 					if b {
@@ -452,10 +451,7 @@ func (v *MainView) importConfig() {
 			return
 		}
 		v.save(name, cfg)
-	}, v.window)
-
-	fileDialog.Resize(fyne.NewSize(820, 600))
-	fileDialog.Show()
+	})
 }
 
 func (v *MainView) save(name string, cfg *config.Config) {
